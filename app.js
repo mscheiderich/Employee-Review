@@ -1,14 +1,31 @@
 // ============================================================
-//  CONFIGURATION — update these values before deploying
+//  CONFIGURATION — update before deploying
 // ============================================================
 const CONFIG = {
-  password:      'Allstate2026$$',          // Change this to your desired password
-  proxyUrl:      'proxy.php',               // Path to your proxy.php on the server
-  sheetId:       '1M8LvVrgPCarObzGSWeicjpQSh43FvfSDm79wk1efOW4',
-  sheetName:     'Incidents',               // Tab name inside your Google Sheet
-  // Google OAuth — fill in after setting up OAuth in Google Cloud Console
-  googleClientId: '152603955396-tsmdqffv4d0v3kuhfdpvi3hp83jehkru.apps.googleusercontent.com',  // e.g. 123456789-abc.apps.googleusercontent.com
+  password:       'Allstate2026$$',
+  proxyUrl:       'proxy.php',
+  sheetId:        '1M8LvVrgPCarObzGSWeicjpQSh43FvfSDm79wk1efOW4',
+  incidentSheet:  'Incidents',
+  reviewSheet:    'Reviews',
+  googleClientId: '152603955396-tsmdqffv4d0v3kuhfdpvi3hp83jehkru.apps.googleusercontent.com',
+  driveFolderName:'Employee Reviews',
 };
+
+// ============================================================
+//  Default employee list — admin can add more via the UI
+// ============================================================
+const DEFAULT_EMPLOYEES = [
+  'Chris Wolter',
+  'Craig Diago',
+  'Crissy Shatzel',
+  'Iris Salgado',
+  'Mark Hill',
+  'Matt Grana',
+  'Michael Scheiderich',
+  'Scott Kesler',
+  'Tym LeMoyne',
+  'Wendy Alanez',
+];
 
 // ============================================================
 //  Rating definitions
@@ -47,24 +64,43 @@ const RATING_SHORT = {
 const PILL_CLASS = { '4': 'p4', '3': 'p3', '2': 'p2', '1': 'p1' };
 
 // ============================================================
+//  State
+// ============================================================
+let currentUser     = null;
+let googleToken     = null;
+let allIncidents    = [];
+let allReviews      = [];
+let employees       = [];
+let incidentFilter  = 'All';
+let historyFilter   = 'All';
+let lastReviewText  = '';
+let lastReviewEmp   = '';
+let lastReviewType  = '';
+let rootFolderId    = null;
+
+// ============================================================
 //  Auth
 // ============================================================
 function checkLogin() {
+  const user = document.getElementById('login-user').value;
   const pass = document.getElementById('login-pass').value;
   const err  = document.getElementById('login-error');
-  if (pass === CONFIG.password) {
-    sessionStorage.setItem('auth', '1');
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
-    initApp();
-  } else {
-    err.style.display = 'block';
-    document.getElementById('login-pass').value = '';
-  }
+
+  if (!user) { err.textContent = 'Please select who you are.'; err.style.display = 'block'; return; }
+  if (pass !== CONFIG.password) { err.textContent = 'Incorrect password.'; err.style.display = 'block'; return; }
+
+  currentUser = user;
+  sessionStorage.setItem('auth', '1');
+  sessionStorage.setItem('user', user);
+
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  initApp();
 }
 
 function logout() {
-  sessionStorage.removeItem('auth');
+  sessionStorage.clear();
+  googleToken = null;
   location.reload();
 }
 
@@ -72,8 +108,8 @@ document.getElementById('login-pass').addEventListener('keydown', e => {
   if (e.key === 'Enter') checkLogin();
 });
 
-// Auto-login if session is still active
 if (sessionStorage.getItem('auth') === '1') {
+  currentUser = sessionStorage.getItem('user');
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
 }
@@ -82,11 +118,119 @@ if (sessionStorage.getItem('auth') === '1') {
 //  Init
 // ============================================================
 function initApp() {
+  loadEmployees();
   buildRatingGroups();
   setDefaultDates();
   loadGoogleAuth();
+
+  document.getElementById('header-user').textContent = currentUser;
+  document.getElementById('reviewer').value          = currentUser;
+  document.getElementById('inc-logger').value        = currentUser;
 }
 
+// ============================================================
+//  Employee management
+// ============================================================
+function loadEmployees() {
+  const stored = localStorage.getItem('scheiderich-employees');
+  employees = stored ? JSON.parse(stored) : [...DEFAULT_EMPLOYEES];
+  populateEmployeeDropdowns();
+  renderAdminEmployeeList();
+  buildFilterBars();
+}
+
+function saveEmployees() {
+  localStorage.setItem('scheiderich-employees', JSON.stringify(employees));
+}
+
+function addEmployee() {
+  const name = document.getElementById('new-emp-name').value.trim();
+  if (!name) { alert('Please enter a name.'); return; }
+  if (employees.includes(name)) { alert('That employee already exists.'); return; }
+
+  employees.push(name);
+  employees.sort();
+  saveEmployees();
+  populateEmployeeDropdowns();
+  renderAdminEmployeeList();
+  buildFilterBars();
+
+  document.getElementById('new-emp-name').value = '';
+  const msg = document.getElementById('emp-success');
+  msg.style.display = 'block';
+  setTimeout(() => { msg.style.display = 'none'; }, 3000);
+}
+
+function removeEmployee(name) {
+  if (!confirm(`Remove ${name} from the employee list? This does not delete their records.`)) return;
+  employees = employees.filter(e => e !== name);
+  saveEmployees();
+  populateEmployeeDropdowns();
+  renderAdminEmployeeList();
+  buildFilterBars();
+}
+
+function populateEmployeeDropdowns() {
+  const opts = employees.map(e => `<option value="${e}">${e}</option>`).join('');
+  const customOpt = '<option value="__custom">Other...</option>';
+
+  const empSel  = document.getElementById('emp-sel');
+  const incEmp  = document.getElementById('inc-emp');
+
+  if (empSel) empSel.innerHTML  = '<option value="">Select...</option>' + opts + customOpt;
+  if (incEmp) incEmp.innerHTML  = '<option value="">Select...</option>' + opts;
+}
+
+function renderAdminEmployeeList() {
+  const el = document.getElementById('employee-list-admin');
+  if (!el) return;
+  el.innerHTML = employees.map(e => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#fafafa;border:1px solid #eee;border-radius:8px;margin-bottom:6px">
+      <span style="font-size:14px">${e}</span>
+      <button onclick="removeEmployee('${e}')" style="font-size:12px;padding:3px 10px;border:1px solid #fca5a5;border-radius:6px;background:transparent;color:#991b1b;cursor:pointer">Remove</button>
+    </div>`).join('');
+}
+
+function buildFilterBars() {
+  const empButtons = employees.map(e => {
+    const first = e.split(' ')[0];
+    return `<button class="f-btn" onclick="filterInc('${e}', this)">${first}</button>`;
+  }).join('');
+
+  const incBar = document.getElementById('inc-filter-bar');
+  if (incBar) {
+    incBar.innerHTML = `
+      <button class="f-btn active" onclick="filterInc('All', this)">All</button>
+      ${empButtons}
+      <button class="f-btn" onclick="filterInc('Compliance', this)">Compliance</button>
+      <button class="f-btn" onclick="filterInc('Performance', this)">Performance</button>`;
+  }
+
+  const histBar = document.getElementById('history-filter-bar');
+  if (histBar) {
+    const histEmpBtns = employees.map(e => {
+      const first = e.split(' ')[0];
+      return `<button class="f-btn" onclick="filterHistory('${e}', this)">${first}</button>`;
+    }).join('');
+    histBar.innerHTML = `<button class="f-btn active" onclick="filterHistory('All', this)">All</button>${histEmpBtns}`;
+  }
+}
+
+// ============================================================
+//  Tab switching
+// ============================================================
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'incidents') loadIncidents();
+  if (name === 'history')   loadReviews();
+}
+
+// ============================================================
+//  Review form
+// ============================================================
 function buildRatingGroups() {
   document.getElementById('skills-group').innerHTML   = SKILLS.map(buildRatingRow).join('');
   document.getElementById('behavior-group').innerHTML = BEHAVIORS.map(buildRatingRow).join('');
@@ -109,26 +253,12 @@ function buildRatingRow([id, label]) {
 
 function setDefaultDates() {
   const today = new Date().toISOString().split('T')[0];
-  const rd = document.getElementById('rev-date');
-  const id = document.getElementById('inc-date');
-  if (rd) rd.value = today;
-  if (id) id.value = today;
+  ['rev-date', 'inc-date'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = today;
+  });
 }
 
-// ============================================================
-//  Tab switching
-// ============================================================
-function switchTab(name, btn) {
-  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.getElementById('tab-' + name).classList.add('active');
-  btn.classList.add('active');
-  if (name === 'incidents') loadIncidents();
-}
-
-// ============================================================
-//  Review form helpers
-// ============================================================
 function onEmpChange() {
   const v = document.getElementById('emp-sel').value;
   document.getElementById('custom-wrap').style.display = v === '__custom' ? 'block' : 'none';
@@ -144,9 +274,7 @@ function updatePill(selId, pillId) {
 
 function getEmpName() {
   const v = document.getElementById('emp-sel').value;
-  return v === '__custom'
-    ? document.getElementById('custom-name').value.trim()
-    : v;
+  return v === '__custom' ? document.getElementById('custom-name').value.trim() : v;
 }
 
 function getRatingsSummary() {
@@ -157,7 +285,7 @@ function getRatingsSummary() {
 }
 
 // ============================================================
-//  Generate review — calls proxy.php → Anthropic API
+//  Generate review
 // ============================================================
 async function generateReview() {
   const emp = getEmpName();
@@ -175,15 +303,15 @@ async function generateReview() {
 
   const prompt = buildPrompt({ emp, type, date, reviewer, sNotes, bNotes, strengths, growth, goals, compliance });
 
-  const outputBox   = document.getElementById('review-output');
-  const outputText  = document.getElementById('review-text');
-  const loadingBox  = document.getElementById('review-loading');
-  const generateBtn = document.querySelector('#tab-review .primary-btn');
+  const outputBox  = document.getElementById('review-output');
+  const outputText = document.getElementById('review-text');
+  const loadingBox = document.getElementById('review-loading');
+  const genBtn     = document.querySelector('#tab-review .primary-btn');
 
   outputBox.style.display  = 'none';
   loadingBox.style.display = 'block';
-  generateBtn.disabled     = true;
-  generateBtn.textContent  = 'Generating...';
+  genBtn.disabled          = true;
+  genBtn.textContent       = 'Generating...';
 
   try {
     const res = await fetch(CONFIG.proxyUrl, {
@@ -196,20 +324,24 @@ async function generateReview() {
     const data = await res.json();
     const text = data.content?.[0]?.text || 'No response received.';
 
-    outputText.textContent   = text;
-    outputBox.style.display  = 'block';
+    lastReviewText = text;
+    lastReviewEmp  = emp;
+    lastReviewType = type;
+
+    outputText.textContent  = text;
+    outputBox.style.display = 'block';
     outputBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (err) {
-    alert('Error generating review: ' + err.message + '\n\nCheck that proxy.php is uploaded to your server.');
+    alert('Error generating review: ' + err.message);
   } finally {
     loadingBox.style.display = 'none';
-    generateBtn.disabled     = false;
-    generateBtn.textContent  = 'Generate Full Review Draft';
+    genBtn.disabled          = false;
+    genBtn.textContent       = 'Generate Full Review Draft';
   }
 }
 
 function buildPrompt({ emp, type, date, reviewer, sNotes, bNotes, strengths, growth, goals, compliance }) {
-  const year = new Date().getFullYear();
+  const year          = new Date().getFullYear();
   const hasCompliance = compliance && compliance.trim();
   const hasGoals      = goals && goals.trim();
   const goalSection   = hasCompliance ? '7' : '6';
@@ -234,38 +366,114 @@ ${growth || 'Not provided'}
 
 GOALS FOR NEXT PERIOD (use bullet points):
 ${goals || 'Not provided'}
-${hasCompliance ? '\nCOMPLIANCE / FLAGGED ISSUES (address clearly and firmly but professionally — state what cannot happen again):\n' + compliance : ''}
+${hasCompliance ? '\nCOMPLIANCE / FLAGGED ISSUES (address clearly and firmly but professionally):\n' + compliance : ''}
 
-Write a complete, professional employee review with the following sections:
-1. Overview (2–3 sentence summary of this employee's performance period)
-2. Skills & Competencies (reference the ratings above with context and specific examples)
-3. Behavior & Attitude (reference the ratings above with context)
-4. Strengths & Achievements (bullet points, warm and specific)
-5. Areas for Growth & Development (bullet points, supportive framing — opportunities not failures)${hasCompliance ? '\n6. Compliance & Critical Issues (firm, professional, specific about what cannot continue)' : ''}${hasGoals ? '\n' + goalSection + '. Goals for ' + year + ' (bullet points, specific and measurable)' : ''}
-
-Keep the tone professional, warm, and action-oriented. This review should motivate the employee while giving them a clear picture of where they need to grow.`;
+Write a complete professional employee review with these sections:
+1. Overview (2–3 sentence summary)
+2. Skills & Competencies (reference ratings with context)
+3. Behavior & Attitude (reference ratings with context)
+4. Strengths & Achievements (bullet points)
+5. Areas for Growth & Development (bullet points, supportive framing)${hasCompliance ? '\n6. Compliance & Critical Issues (firm, professional, specific)' : ''}${hasGoals ? '\n' + goalSection + '. Goals for ' + year + ' (bullet points)' : ''}`;
 }
 
 function copyReview() {
-  const text = document.getElementById('review-text').textContent;
-  navigator.clipboard.writeText(text).then(() => {
+  navigator.clipboard.writeText(lastReviewText).then(() => {
     const btn = document.querySelector('.copy-btn');
+    const orig = btn.textContent;
     btn.textContent = 'Copied!';
-    setTimeout(() => { btn.textContent = 'Copy to clipboard'; }, 2000);
+    setTimeout(() => { btn.textContent = orig; }, 2000);
   });
 }
 
 // ============================================================
-//  Google Sheets — OAuth 2.0 (write access)
+//  Save review to Google Sheets + Drive
 // ============================================================
-let googleToken = null;
+async function saveReview() {
+  if (!lastReviewText) { alert('No review to save. Generate a review first.'); return; }
 
+  const saveBtn = document.querySelector('.output-toolbar .copy-btn:last-child');
+  saveBtn.textContent = 'Saving...';
+  saveBtn.disabled    = true;
+
+  getGoogleToken(async () => {
+    try {
+      // 1. Save to Sheets
+      const date     = document.getElementById('rev-date').value;
+      const type     = document.getElementById('rev-type').value;
+      const reviewer = document.getElementById('reviewer').value;
+      const row      = [new Date().toISOString(), lastReviewEmp, type, date, reviewer, lastReviewText.substring(0, 5000)];
+
+      const sheetsUrl = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.sheetId}/values/${CONFIG.reviewSheet}!A:F:append?valueInputOption=USER_ENTERED`;
+      await fetch(sheetsUrl, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + googleToken, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: [row] }),
+      });
+
+      // 2. Get or create root Drive folder
+      if (!rootFolderId) {
+        rootFolderId = await getOrCreateFolder(CONFIG.driveFolderName, 'root');
+      }
+
+      // 3. Get or create employee subfolder
+      const empFolderId = await getOrCreateFolder(lastReviewEmp, rootFolderId);
+
+      // 4. Create the review file in Drive
+      const fileName  = `${lastReviewType} — ${date || new Date().toISOString().split('T')[0]}`;
+      const fileContent = lastReviewText;
+
+      const meta = JSON.stringify({ name: fileName, mimeType: 'text/plain', parents: [empFolderId] });
+      const form = new FormData();
+      form.append('metadata', new Blob([meta], { type: 'application/json' }));
+      form.append('file', new Blob([fileContent], { type: 'text/plain' }));
+
+      await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + googleToken },
+        body: form,
+      });
+
+      saveBtn.textContent = 'Saved!';
+      setTimeout(() => { saveBtn.textContent = 'Save to Drive & Sheets'; saveBtn.disabled = false; }, 2000);
+
+    } catch (err) {
+      alert('Error saving: ' + err.message);
+      saveBtn.textContent = 'Save to Drive & Sheets';
+      saveBtn.disabled    = false;
+    }
+  });
+}
+
+async function getOrCreateFolder(name, parentId) {
+  // Search for existing folder
+  const query    = encodeURIComponent(`name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`);
+  const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`, {
+    headers: { 'Authorization': 'Bearer ' + googleToken },
+  });
+  const searchData = await searchRes.json();
+
+  if (searchData.files && searchData.files.length > 0) {
+    return searchData.files[0].id;
+  }
+
+  // Create new folder
+  const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + googleToken, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] }),
+  });
+  const createData = await createRes.json();
+  return createData.id;
+}
+
+// ============================================================
+//  Google OAuth
+// ============================================================
 function loadGoogleAuth() {
-  // Load the Google Identity Services library
-  const script = document.createElement('script');
-  script.src = 'https://accounts.google.com/gsi/client';
-  script.async = true;
-  script.defer = true;
+  const script  = document.createElement('script');
+  script.src    = 'https://accounts.google.com/gsi/client';
+  script.async  = true;
+  script.defer  = true;
   document.head.appendChild(script);
 }
 
@@ -274,12 +482,9 @@ function getGoogleToken(callback) {
 
   const client = google.accounts.oauth2.initTokenClient({
     client_id: CONFIG.googleClientId,
-    scope: 'https://www.googleapis.com/auth/spreadsheets',
+    scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file',
     callback: (response) => {
-      if (response.error) {
-        alert('Google sign-in failed: ' + response.error);
-        return;
-      }
+      if (response.error) { alert('Google sign-in failed: ' + response.error); return; }
       googleToken = response.access_token;
       callback();
     },
@@ -291,9 +496,6 @@ function getGoogleToken(callback) {
 // ============================================================
 //  Incident log
 // ============================================================
-let allIncidents = [];
-let currentFilter = 'All';
-
 async function addIncident() {
   const emp    = document.getElementById('inc-emp').value;
   const date   = document.getElementById('inc-date').value;
@@ -311,43 +513,27 @@ async function addIncident() {
   errorMsg.style.display   = 'none';
 
   getGoogleToken(async () => {
-    const row = [
-      new Date().toISOString(),
-      emp,
-      date || new Date().toISOString().split('T')[0],
-      type,
-      desc,
-      action,
-      logger,
-    ];
-
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.sheetId}/values/${CONFIG.sheetName}!A:G:append?valueInputOption=USER_ENTERED`;
+    const row = [new Date().toISOString(), emp, date || new Date().toISOString().split('T')[0], type, desc, action, logger];
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.sheetId}/values/${CONFIG.incidentSheet}!A:G:append?valueInputOption=USER_ENTERED`;
 
     try {
       const res = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Authorization': 'Bearer ' + googleToken,
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Authorization': 'Bearer ' + googleToken, 'Content-Type': 'application/json' },
         body: JSON.stringify({ values: [row] }),
       });
-
       if (!res.ok) throw new Error('Sheets API error ' + res.status);
 
-      // Clear the form
       document.getElementById('inc-emp').value    = '';
       document.getElementById('inc-desc').value   = '';
       document.getElementById('inc-action').value = '';
-      document.getElementById('inc-logger').value = '';
       setDefaultDates();
 
       successMsg.style.display = 'block';
       setTimeout(() => { successMsg.style.display = 'none'; }, 3000);
-
       loadIncidents();
     } catch (err) {
-      errorMsg.textContent = 'Error saving: ' + err.message;
+      errorMsg.textContent   = 'Error saving: ' + err.message;
       errorMsg.style.display = 'block';
     }
   });
@@ -356,33 +542,20 @@ async function addIncident() {
 async function loadIncidents() {
   const loadingEl = document.getElementById('inc-loading');
   const listEl    = document.getElementById('inc-list');
-
   loadingEl.style.display = 'block';
   listEl.innerHTML = '';
 
   getGoogleToken(async () => {
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.sheetId}/values/${CONFIG.sheetName}!A:G`;
-
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.sheetId}/values/${CONFIG.incidentSheet}!A:G`;
     try {
-      const res  = await fetch(url, {
-        headers: { 'Authorization': 'Bearer ' + googleToken },
-      });
+      const res  = await fetch(url, { headers: { 'Authorization': 'Bearer ' + googleToken } });
       const data = await res.json();
-      const rows = (data.values || []).slice(1); // skip header row
-
+      const rows = (data.values || []).slice(1);
       allIncidents = rows.map(r => ({
-        timestamp: r[0] || '',
-        emp:       r[1] || '',
-        date:      r[2] || '',
-        type:      r[3] || '',
-        desc:      r[4] || '',
-        action:    r[5] || '',
-        logger:    r[6] || '',
-      })).reverse(); // newest first
-
-    } catch (err) {
-      allIncidents = [];
-    }
+        timestamp: r[0] || '', emp: r[1] || '', date: r[2] || '',
+        type: r[3] || '', desc: r[4] || '', action: r[5] || '', logger: r[6] || '',
+      })).reverse();
+    } catch { allIncidents = []; }
 
     loadingEl.style.display = 'none';
     renderIncidents();
@@ -390,40 +563,31 @@ async function loadIncidents() {
 }
 
 function filterInc(filter, btn) {
-  currentFilter = filter;
-  document.querySelectorAll('.f-btn').forEach(b => b.classList.remove('active'));
+  incidentFilter = filter;
+  document.querySelectorAll('#inc-filter-bar .f-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   renderIncidents();
 }
 
 function renderIncidents() {
-  const listEl = document.getElementById('inc-list');
-
-  let filtered = allIncidents;
-  if (currentFilter !== 'All') {
-    filtered = allIncidents.filter(i =>
-      i.emp === currentFilter || i.type === currentFilter
-    );
-  }
+  const listEl   = document.getElementById('inc-list');
+  const filtered = incidentFilter === 'All'
+    ? allIncidents
+    : allIncidents.filter(i => i.emp === incidentFilter || i.type === incidentFilter);
 
   if (!filtered.length) {
-    listEl.innerHTML = '<div class="empty-state">No incidents logged yet.<br>Use the form above to document issues as they arise.</div>';
+    listEl.innerHTML = '<div class="empty-state">No incidents logged yet.</div>';
     return;
   }
 
-  const typeBadge = {
-    'Compliance':  'badge-compliance',
-    'Performance': 'badge-performance',
-    'Behavior':    'badge-behavior',
-    'Other':       'badge-other',
-  };
+  const typeCls = { 'Compliance':'badge-compliance', 'Performance':'badge-performance', 'Behavior':'badge-behavior', 'Other':'badge-other' };
 
-  listEl.innerHTML = filtered.map((i, idx) => `
+  listEl.innerHTML = filtered.map(i => `
     <div class="inc-card">
       <div class="inc-meta">
         <span class="inc-name">${i.emp}</span>
         <span class="inc-date">${i.date}</span>
-        <span class="pill ${typeBadge[i.type] || 'badge-other'}" style="border-radius:6px">${i.type}</span>
+        <span class="pill ${typeCls[i.type] || 'badge-other'}" style="border-radius:6px">${i.type}</span>
         ${i.logger ? `<span style="font-size:12px;color:#888">Logged by ${i.logger}</span>` : ''}
       </div>
       <p class="inc-text">${i.desc}</p>
@@ -432,27 +596,88 @@ function renderIncidents() {
 }
 
 // ============================================================
-//  Set up Google Sheet header row (run once on first use)
-//  Open browser console and call: setupSheetHeaders()
+//  Review history
+// ============================================================
+async function loadReviews() {
+  const loadingEl = document.getElementById('history-loading');
+  const listEl    = document.getElementById('history-list');
+  loadingEl.style.display = 'block';
+  listEl.innerHTML = '';
+
+  getGoogleToken(async () => {
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.sheetId}/values/${CONFIG.reviewSheet}!A:F`;
+    try {
+      const res  = await fetch(url, { headers: { 'Authorization': 'Bearer ' + googleToken } });
+      const data = await res.json();
+      const rows = (data.values || []).slice(1);
+      allReviews = rows.map(r => ({
+        timestamp: r[0] || '', emp: r[1] || '', type: r[2] || '',
+        date: r[3] || '', reviewer: r[4] || '', text: r[5] || '',
+      })).reverse();
+    } catch { allReviews = []; }
+
+    loadingEl.style.display = 'none';
+    renderReviews();
+  });
+}
+
+function filterHistory(filter, btn) {
+  historyFilter = filter;
+  document.querySelectorAll('#history-filter-bar .f-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderReviews();
+}
+
+function renderReviews() {
+  const listEl   = document.getElementById('history-list');
+  const filtered = historyFilter === 'All'
+    ? allReviews
+    : allReviews.filter(r => r.emp === historyFilter);
+
+  if (!filtered.length) {
+    listEl.innerHTML = '<div class="empty-state">No reviews saved yet. Generate a review and click "Save to Drive & Sheets".</div>';
+    return;
+  }
+
+  listEl.innerHTML = filtered.map((r, i) => `
+    <div class="inc-card">
+      <div class="inc-meta">
+        <span class="inc-name">${r.emp}</span>
+        <span class="inc-date">${r.date}</span>
+        <span class="pill p3" style="border-radius:6px">${r.type}</span>
+        ${r.reviewer ? `<span style="font-size:12px;color:#888">By ${r.reviewer}</span>` : ''}
+      </div>
+      <button class="secondary-btn" style="margin-top:8px;font-size:12px;padding:4px 12px" onclick="toggleReviewText(${i})">View review</button>
+      <div id="rev-text-${i}" style="display:none;margin-top:10px;font-size:13px;line-height:1.8;white-space:pre-wrap;border-top:1px solid #eee;padding-top:10px">${r.text}</div>
+    </div>`).join('');
+}
+
+function toggleReviewText(i) {
+  const el  = document.getElementById(`rev-text-${i}`);
+  const btn = el.previousElementSibling;
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    btn.textContent  = 'Hide review';
+  } else {
+    el.style.display = 'none';
+    btn.textContent  = 'View review';
+  }
+}
+
+// ============================================================
+//  Sheet setup — run once via Admin tab
 // ============================================================
 async function setupSheetHeaders() {
   getGoogleToken(async () => {
-    const headers = [['Timestamp', 'Employee', 'Date', 'Issue Type', 'Description', 'Action Taken', 'Logged By']];
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.sheetId}/values/${CONFIG.sheetName}!A1:G1?valueInputOption=USER_ENTERED`;
+    const incHeaders = [['Timestamp','Employee','Date','Issue Type','Description','Action Taken','Logged By (Manager)']];
+    const revHeaders = [['Timestamp','Employee','Review Type','Review Date','Reviewer','Review Text']];
 
-    const res = await fetch(url, {
-      method: 'PUT',
-      headers: {
-        'Authorization': 'Bearer ' + googleToken,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ values: headers }),
-    });
+    const base = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.sheetId}/values`;
+    const opts = { method: 'PUT', headers: { 'Authorization': 'Bearer ' + googleToken, 'Content-Type': 'application/json' } };
 
-    if (res.ok) {
-      console.log('Sheet headers set up successfully.');
-    } else {
-      console.error('Failed to set up headers:', await res.text());
-    }
+    await fetch(`${base}/${CONFIG.incidentSheet}!A1:G1?valueInputOption=USER_ENTERED`, { ...opts, body: JSON.stringify({ values: incHeaders }) });
+    await fetch(`${base}/${CONFIG.reviewSheet}!A1:F1?valueInputOption=USER_ENTERED`,   { ...opts, body: JSON.stringify({ values: revHeaders }) });
+
+    alert('Sheet headers set up successfully. Make sure you have both an "Incidents" tab and a "Reviews" tab in your Google Sheet.');
   });
 }
