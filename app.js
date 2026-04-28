@@ -1,13 +1,14 @@
+// app.js v3 — clean rebuild, no template literal corruption
 // ============================================================
 //  CONFIGURATION — update before deploying
 // ============================================================
 const CONFIG = {
-  password:       'Allstate2026$$',
+  password:       'SchAgency2025!',
   proxyUrl:       'proxy.php',
   sheetId:        '1M8LvVrgPCarObzGSWeicjpQSh43FvfSDm79wk1efOW4',
   incidentSheet:  'Incidents',
   reviewSheet:    'Reviews',
-  googleClientId: '152603955396-tsmdqffv4d0v3kuhfdpvi3hp83jehkru.apps.googleusercontent.com',
+  googleClientId: 'YOUR_GOOGLE_CLIENT_ID',
   driveFolderName:'Employee Reviews',
 };
 
@@ -112,7 +113,6 @@ if (sessionStorage.getItem('auth') === '1') {
   currentUser = sessionStorage.getItem('user');
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
-  initApp();
 }
 
 // ============================================================
@@ -134,21 +134,27 @@ function initApp() {
 // ============================================================
 function loadEmployees() {
   const stored = localStorage.getItem('scheiderich-employees');
-  if (stored) {
-    try {
-      const parsed = JSON.parse(stored);
-      employees = parsed.length ? parsed : [...DEFAULT_EMPLOYEES];
-    } catch(e) {
-      employees = [...DEFAULT_EMPLOYEES];
-    }
-  } else {
-    employees = [...DEFAULT_EMPLOYEES];
-    localStorage.setItem('scheiderich-employees', JSON.stringify(employees));
-  }
+  employees = stored ? JSON.parse(stored) : [...DEFAULT_EMPLOYEES];
   populateEmployeeDropdowns();
   renderAdminEmployeeList();
   buildFilterBars();
 }
+
+function saveEmployees() {
+  localStorage.setItem('scheiderich-employees', JSON.stringify(employees));
+}
+
+function addEmployee() {
+  const name = document.getElementById('new-emp-name').value.trim();
+  if (!name) { alert('Please enter a name.'); return; }
+  if (employees.includes(name)) { alert('That employee already exists.'); return; }
+
+  employees.push(name);
+  employees.sort();
+  saveEmployees();
+  populateEmployeeDropdowns();
+  renderAdminEmployeeList();
+  buildFilterBars();
 
   document.getElementById('new-emp-name').value = '';
   const msg = document.getElementById('emp-success');
@@ -676,3 +682,4 @@ async function setupSheetHeaders() {
     alert('Sheet headers set up successfully. Make sure you have both an "Incidents" tab and a "Reviews" tab in your Google Sheet.');
   });
 }
+
