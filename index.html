@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scheiderich Agency — Employee Review System</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- LOGIN SCREEN -->
+  <div id="login-screen">
+    <div class="login-box">
+      <div class="login-logo">Scheiderich Agency</div>
+      <p class="login-sub">Employee Review System</p>
+      <input type="password" id="login-pass" placeholder="Enter password" />
+      <button onclick="checkLogin()">Sign in</button>
+      <p id="login-error" class="error-msg" style="display:none">Incorrect password</p>
+    </div>
+  </div>
+
+  <!-- MAIN APP -->
+  <div id="app" style="display:none">
+    <header class="app-header">
+      <span class="header-title">Scheiderich Agency &mdash; Employee Review System</span>
+      <button class="logout-btn" onclick="logout()">Sign out</button>
+    </header>
+
+    <div class="container">
+      <div class="tab-bar">
+        <button class="tab active" onclick="switchTab('review', this)">New Review</button>
+        <button class="tab" onclick="switchTab('incidents', this)">Incident Log</button>
+        <button class="tab" onclick="switchTab('rubric', this)">Rubric Guide</button>
+      </div>
+
+      <!-- ===== REVIEW TAB ===== -->
+      <div id="tab-review" class="tab-content active">
+
+        <div class="card">
+          <p class="sec-title">Employee &amp; Review Info</p>
+          <div class="row2">
+            <div>
+              <label>Employee</label>
+              <select id="emp-sel" onchange="onEmpChange()">
+                <option value="">Select...</option>
+                <option>Iris Salgado</option>
+                <option>Mark Hill</option>
+                <option>Crissy Shatzel</option>
+                <option value="__custom">Other...</option>
+              </select>
+            </div>
+            <div>
+              <label>Review Type</label>
+              <select id="rev-type">
+                <option>Annual Review</option>
+                <option>Q1 Review</option>
+                <option>Q2 Review</option>
+                <option>Q3 Review</option>
+                <option>Q4 Review</option>
+              </select>
+            </div>
+          </div>
+          <div id="custom-wrap" style="display:none; margin-top:12px">
+            <label>Employee Name</label>
+            <input type="text" id="custom-name" placeholder="Full name" />
+          </div>
+          <div class="row2" style="margin-top:12px">
+            <div>
+              <label>Review Date</label>
+              <input type="date" id="rev-date" />
+            </div>
+            <div>
+              <label>Reviewer</label>
+              <input type="text" id="reviewer" placeholder="Manager name" />
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <p class="sec-title">Section 2 — Skills &amp; Competencies</p>
+          <div id="skills-group"></div>
+          <label style="margin-top:12px">Notes (optional)</label>
+          <textarea id="skills-notes" rows="2" placeholder="Additional context on skills..."></textarea>
+        </div>
+
+        <div class="card">
+          <p class="sec-title">Section 3 — Behavior &amp; Attitude</p>
+          <div id="behavior-group"></div>
+          <label style="margin-top:12px">Notes (optional)</label>
+          <textarea id="behavior-notes" rows="2" placeholder="Additional context on behavior..."></textarea>
+        </div>
+
+        <div class="card">
+          <p class="sec-title">Section 4 — Strengths &amp; Achievements</p>
+          <textarea id="strengths" rows="4" placeholder="List strengths and wins — sales numbers, client feedback, standout moments. Raw notes are fine; they will be rewritten professionally."></textarea>
+        </div>
+
+        <div class="card">
+          <p class="sec-title">Section 5 — Areas for Growth</p>
+          <textarea id="growth" rows="4" placeholder="Be direct. These will be rewritten in a supportive, growth-focused tone."></textarea>
+        </div>
+
+        <div class="card">
+          <p class="sec-title">Section 6 — Goals</p>
+          <textarea id="goals" rows="3" placeholder="Specific, measurable goals for the next period..."></textarea>
+        </div>
+
+        <div class="card">
+          <p class="sec-title">Compliance or Flagged Issues</p>
+          <textarea id="compliance" rows="2" placeholder="Any compliance violations or serious issues to address in this review..."></textarea>
+        </div>
+
+        <button class="primary-btn" onclick="generateReview()">
+          Generate Full Review Draft
+        </button>
+
+        <div id="review-output" style="display:none" class="card output-card">
+          <div class="output-toolbar">
+            <p class="sec-title" style="margin:0">Generated Review</p>
+            <button class="copy-btn" onclick="copyReview()">Copy to clipboard</button>
+          </div>
+          <div id="review-text" class="review-output-text"></div>
+        </div>
+
+        <div id="review-loading" style="display:none" class="loading-box">
+          Generating review draft — this takes about 15 seconds...
+        </div>
+
+      </div>
+
+      <!-- ===== INCIDENTS TAB ===== -->
+      <div id="tab-incidents" class="tab-content">
+
+        <div class="storage-note">
+          &#9679; Incidents are saved to Google Sheets — they persist permanently and are accessible any time.
+        </div>
+
+        <div class="card">
+          <p class="sec-title">Log an Incident</p>
+          <div class="row2">
+            <div>
+              <label>Employee</label>
+              <select id="inc-emp">
+                <option value="">Select...</option>
+                <option>Iris Salgado</option>
+                <option>Mark Hill</option>
+                <option>Crissy Shatzel</option>
+                <option>Other</option>
+              </select>
+            </div>
+            <div>
+              <label>Date</label>
+              <input type="date" id="inc-date" />
+            </div>
+          </div>
+          <div style="margin-top:12px">
+            <label>Issue Type</label>
+            <select id="inc-type">
+              <option value="Compliance">Compliance violation</option>
+              <option value="Performance">Performance issue</option>
+              <option value="Behavior">Behavior / attitude</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div style="margin-top:12px">
+            <label>What Happened</label>
+            <textarea id="inc-desc" rows="3" placeholder="Describe the issue — be factual and specific. Include dates, what rule or expectation was violated..."></textarea>
+          </div>
+          <div style="margin-top:12px">
+            <label>Action Taken / Follow-up Required</label>
+            <textarea id="inc-action" rows="2" placeholder="What was communicated to the employee? What follow-up is needed?"></textarea>
+          </div>
+          <div style="margin-top:12px">
+            <label>Logged By</label>
+            <input type="text" id="inc-logger" placeholder="Manager name" />
+          </div>
+          <button class="secondary-btn" style="margin-top:1rem" onclick="addIncident()">Add to Log</button>
+          <p id="inc-success" class="success-msg" style="display:none">Incident saved to Google Sheets.</p>
+          <p id="inc-error" class="error-msg" style="display:none">Error saving incident. Check your Google Sheets connection.</p>
+        </div>
+
+        <p class="sec-title">Logged Incidents</p>
+        <div class="filter-bar">
+          <button class="f-btn active" onclick="filterInc('All', this)">All</button>
+          <button class="f-btn" onclick="filterInc('Iris Salgado', this)">Iris</button>
+          <button class="f-btn" onclick="filterInc('Mark Hill', this)">Mark</button>
+          <button class="f-btn" onclick="filterInc('Crissy Shatzel', this)">Crissy</button>
+          <button class="f-btn" onclick="filterInc('Compliance', this)">Compliance</button>
+          <button class="f-btn" onclick="filterInc('Performance', this)">Performance</button>
+        </div>
+
+        <div id="inc-loading" class="loading-box" style="display:none">Loading incidents...</div>
+        <div id="inc-list"></div>
+
+      </div>
+
+      <!-- ===== RUBRIC TAB ===== -->
+      <div id="tab-rubric" class="tab-content">
+
+        <div class="card">
+          <p class="sec-title">Rating Scale</p>
+          <div class="rating-scale-grid">
+            <div class="scale-card"><span class="pill p4">4 — Exceeds</span><p>Consistently goes beyond expectations. Sets the example for the team.</p></div>
+            <div class="scale-card"><span class="pill p3">3 — Meets</span><p>Reliably meets the standard. Solid, dependable performance.</p></div>
+            <div class="scale-card"><span class="pill p2">2 — Needs Improvement</span><p>Falls short in some areas. A development plan is warranted.</p></div>
+            <div class="scale-card"><span class="pill p1">1 — Does Not Meet</span><p>Consistently below minimum. Immediate corrective action required.</p></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <p class="sec-title">Section 2 — Skills &amp; Competency Rubric</p>
+          <div class="table-wrap">
+            <table class="rubric-tbl">
+              <thead>
+                <tr>
+                  <th>Competency</th>
+                  <th><span class="pill p4">4</span></th>
+                  <th><span class="pill p3">3</span></th>
+                  <th><span class="pill p2">2</span></th>
+                  <th><span class="pill p1">1</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>Communication</td><td>Adapts to every client; clear and persuasive, no errors</td><td>Communicates clearly; minor gaps under pressure</td><td>Inconsistent; client misunderstandings occur</td><td>Frequent errors; damages relationships</td></tr>
+                <tr><td>Client Relationships</td><td>Clients advocate for the agency; deep trust built</td><td>Positive relationships; solid retention</td><td>Inconsistent rapport; some complaints</td><td>Poor relationships; high churn</td></tr>
+                <tr><td>Time Management</td><td>Proactively prioritizes; always follows up on time</td><td>Manages time well; meets deadlines</td><td>Misses follow-ups occasionally</td><td>Chronically disorganized; tasks fall through</td></tr>
+                <tr><td>Prospecting</td><td>Multi-channel strategy; strong referral pipeline</td><td>Consistent outreach; uses a proven process</td><td>Random activity; no clear strategy</td><td>Minimal prospecting; relies on inbound only</td></tr>
+                <tr><td>Handling Objections</td><td>Confidently turns objections into closes</td><td>Handles most objections effectively</td><td>Struggles with pushback; gives up early</td><td>Rarely addresses objections; loses deals</td></tr>
+                <tr><td>Closing Skills</td><td>Closes &gt;25%; always asks for the sale</td><td>Closes 20–25%; consistent process</td><td>Closes &lt;20%; quotes and waits</td><td>No closing attempt made</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <p class="sec-title">Section 3 — Behavior &amp; Attitude Rubric</p>
+          <div class="table-wrap">
+            <table class="rubric-tbl">
+              <thead>
+                <tr>
+                  <th>Behavior</th>
+                  <th><span class="pill p4">4</span></th>
+                  <th><span class="pill p3">3</span></th>
+                  <th><span class="pill p2">2</span></th>
+                  <th><span class="pill p1">1</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>Team Collaboration</td><td>Elevates the team; mentors and motivates others</td><td>Strong contributor; participates actively</td><td>Works independently; limited team engagement</td><td>Disrupts or is disengaged from the team</td></tr>
+                <tr><td>Adaptability</td><td>Leads through change; helps others adjust</td><td>Adjusts well to new processes or priorities</td><td>Resists change; needs repeated prompting</td><td>Refuses change; disruptive to the team</td></tr>
+                <tr><td>Self-Motivation</td><td>Self-starter; pursues growth without prompting</td><td>Motivated when given direction</td><td>Requires regular check-ins to stay on track</td><td>Passive; waits to be told what to do</td></tr>
+                <tr><td>Company Goals</td><td>Champions VC goals; drives team toward targets</td><td>Aligns personal goals with agency objectives</td><td>Inconsistently aligned; personal goals take priority</td><td>Disregards agency goals entirely</td></tr>
+                <tr><td>Integrity</td><td>Sets the standard; flags issues proactively</td><td>Honest and compliant; no issues</td><td>Occasional gray-area decisions or shortcuts</td><td>Compliance violations; trust is at risk</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
