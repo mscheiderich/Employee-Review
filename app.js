@@ -134,27 +134,21 @@ function initApp() {
 // ============================================================
 function loadEmployees() {
   const stored = localStorage.getItem('scheiderich-employees');
-  employees = stored ? JSON.parse(stored) : [...DEFAULT_EMPLOYEES];
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored);
+      employees = parsed.length ? parsed : [...DEFAULT_EMPLOYEES];
+    } catch(e) {
+      employees = [...DEFAULT_EMPLOYEES];
+    }
+  } else {
+    employees = [...DEFAULT_EMPLOYEES];
+    localStorage.setItem('scheiderich-employees', JSON.stringify(employees));
+  }
   populateEmployeeDropdowns();
   renderAdminEmployeeList();
   buildFilterBars();
 }
-
-function saveEmployees() {
-  localStorage.setItem('scheiderich-employees', JSON.stringify(employees));
-}
-
-function addEmployee() {
-  const name = document.getElementById('new-emp-name').value.trim();
-  if (!name) { alert('Please enter a name.'); return; }
-  if (employees.includes(name)) { alert('That employee already exists.'); return; }
-
-  employees.push(name);
-  employees.sort();
-  saveEmployees();
-  populateEmployeeDropdowns();
-  renderAdminEmployeeList();
-  buildFilterBars();
 
   document.getElementById('new-emp-name').value = '';
   const msg = document.getElementById('emp-success');
