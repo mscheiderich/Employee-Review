@@ -112,6 +112,7 @@ if (sessionStorage.getItem('auth') === '1') {
   currentUser = sessionStorage.getItem('user');
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
+  initApp();
 }
 
 // ============================================================
