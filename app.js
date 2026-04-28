@@ -3,12 +3,12 @@
 //  CONFIGURATION — update before deploying
 // ============================================================
 const CONFIG = {
-  password:       'SchAgency2025!',
+  password:       'Allstate2026$$',
   proxyUrl:       'proxy.php',
   sheetId:        '1M8LvVrgPCarObzGSWeicjpQSh43FvfSDm79wk1efOW4',
   incidentSheet:  'Incidents',
   reviewSheet:    'Reviews',
-  googleClientId: 'YOUR_GOOGLE_CLIENT_ID',
+  googleClientId: '152603955396-tsmdqffv4d0v3kuhfdpvi3hp83jehkru.apps.googleusercontent.com',
   driveFolderName:'Employee Reviews',
 };
 
