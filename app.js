@@ -77,6 +77,7 @@ let historyFilter   = 'All';
 let lastReviewText  = '';
 let lastReviewEmp   = '';
 let lastReviewType  = '';
+let lastReviewDate  = '';
 let rootFolderId    = null;
 
 // ============================================================
@@ -342,6 +343,7 @@ async function generateReview() {
     lastReviewText = text;
     lastReviewEmp  = emp;
     lastReviewType = type;
+    lastReviewDate = date;
 
     outputText.innerHTML = formatReviewText(text);
     outputBox.style.display = 'block';
@@ -391,13 +393,101 @@ Write a complete professional employee review with these sections:
 5. Areas for Growth & Development (bullet points, supportive framing)${hasCompliance ? '\n6. Compliance & Critical Issues (firm, professional, specific)' : ''}${hasGoals ? '\n' + goalSection + '. Goals for ' + year + ' (bullet points)' : ''}`;
 }
 
-function copyReview() {
-  navigator.clipboard.writeText(lastReviewText).then(() => {
-    const btn = document.querySelector('.copy-btn');
-    const orig = btn.textContent;
-    btn.textContent = 'Copied!';
-    setTimeout(() => { btn.textContent = orig; }, 2000);
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('Failed to load ' + src));
+    document.head.appendChild(s);
   });
+}
+
+function parseInlineMarkdown(text, TextRun) {
+  const runs  = [];
+  const regex = /(\*\*[^*]+\*\*|\*[^*]+\*)/g;
+  let last = 0, match;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > last) runs.push(new TextRun({ text: text.slice(last, match.index) }));
+    const m = match[0];
+    if (m.startsWith('**')) runs.push(new TextRun({ text: m.slice(2, -2), bold: true }));
+    else                    runs.push(new TextRun({ text: m.slice(1, -1), italics: true }));
+    last = regex.lastIndex;
+  }
+  if (last < text.length) runs.push(new TextRun({ text: text.slice(last) }));
+  return runs.length ? runs : [new TextRun({ text: '' })];
+}
+
+function markdownToDocxParagraphs(text) {
+  const { Paragraph, TextRun, HeadingLevel } = docx;
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  const out   = [];
+
+  for (const line of lines) {
+    if (line.startsWith('## ')) {
+      out.push(new Paragraph({ text: line.slice(3), heading: HeadingLevel.HEADING_2 }));
+    } else if (line.startsWith('# ')) {
+      out.push(new Paragraph({ text: line.slice(2), heading: HeadingLevel.HEADING_1 }));
+    } else if (/^ {2,}[-*] /.test(line)) {
+      out.push(new Paragraph({ children: parseInlineMarkdown(line.replace(/^ {2,}[-*] /, ''), TextRun), bullet: { level: 1 } }));
+    } else if (/^[-*•] /.test(line)) {
+      out.push(new Paragraph({ children: parseInlineMarkdown(line.slice(2), TextRun), bullet: { level: 0 } }));
+    } else if (/^---+$/.test(line)) {
+      out.push(new Paragraph({ text: '' }));
+    } else {
+      out.push(new Paragraph({ children: parseInlineMarkdown(line, TextRun) }));
+    }
+  }
+  return out;
+}
+
+async function downloadDocx() {
+  if (!lastReviewText) { alert('No review to download. Generate a review first.'); return; }
+
+  const btn = document.querySelector('.copy-btn');
+  btn.textContent = 'Building…';
+  btn.disabled    = true;
+
+  try {
+    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/docx.umd.min.js');
+
+    const doc  = new docx.Document({ sections: [{ children: markdownToDocxParagraphs(lastReviewText) }] });
+    const blob = await docx.Packer.toBlob(doc);
+
+    const date     = lastReviewDate || new Date().toISOString().split('T')[0];
+    const fileName = `${lastReviewEmp} - ${lastReviewType} - ${date}.docx`;
+    const url      = URL.createObjectURL(blob);
+    const a        = document.createElement('a');
+    a.href         = url;
+    a.download     = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    btn.textContent = 'Downloaded!';
+    setTimeout(() => { btn.textContent = 'Download as Word Doc'; btn.disabled = false; }, 2000);
+  } catch (err) {
+    alert('Error generating Word doc: ' + err.message);
+    btn.textContent = 'Download as Word Doc';
+    btn.disabled    = false;
+  }
+}
+
+function markdownToHtml(text) {
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  const htmlLines = lines.map(line => {
+    if (line.startsWith('## ')) return `<h2>${line.slice(3)}</h2>`;
+    if (line.startsWith('# '))  return `<h1>${line.slice(2)}</h1>`;
+    if (/^ {2,}[-*] /.test(line)) return `<li style="margin-left:2em">${line.replace(/^ {2,}[-*] /, '')}</li>`;
+    if (/^[-*•] /.test(line))  return `<li>${line.slice(2)}</li>`;
+    if (/^---+$/.test(line))   return '<hr>';
+    if (line.trim() === '')    return '<br>';
+    return `<p>${line}</p>`;
+  });
+  return htmlLines.join('\n')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>');
 }
 
 // ============================================================
@@ -433,14 +523,14 @@ async function saveReview() {
       // 3. Get or create employee subfolder
       const empFolderId = await getOrCreateFolder(lastReviewEmp, rootFolderId);
 
-      // 4. Create the review file in Drive
-      const fileName  = `${lastReviewType} — ${date || new Date().toISOString().split('T')[0]}`;
-      const fileContent = lastReviewText;
+      // 4. Create the review file in Drive as a Google Doc
+      const fileName    = `${lastReviewType} — ${date || new Date().toISOString().split('T')[0]}`;
+      const htmlContent = markdownToHtml(lastReviewText);
 
-      const meta = JSON.stringify({ name: fileName, mimeType: 'text/plain', parents: [empFolderId] });
+      const meta = JSON.stringify({ name: fileName, mimeType: 'application/vnd.google-apps.document', parents: [empFolderId] });
       const form = new FormData();
       form.append('metadata', new Blob([meta], { type: 'application/json' }));
-      form.append('file', new Blob([fileContent], { type: 'text/plain' }));
+      form.append('file', new Blob([htmlContent], { type: 'text/html' }));
 
       await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
         method: 'POST',
