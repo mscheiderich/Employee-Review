@@ -119,13 +119,12 @@ if (sessionStorage.getItem('auth') === '1') {
 // ============================================================
 //  Init
 // ============================================================
-function initApp() {
+async function initApp() {
   loadEmployees();
   buildRatingGroups();
   setDefaultDates();
   loadGoogleAuth();
-  loadDocxLibrary();
-
+  await loadDocxLibrary();
   document.getElementById('header-user').textContent = currentUser;
   document.getElementById('reviewer').value          = currentUser;
   document.getElementById('inc-logger').value        = currentUser;
@@ -302,10 +301,14 @@ function formatReviewText(text) {
 }
 
 function loadDocxLibrary() {
-  const script = document.createElement('script');
-  script.src   = 'https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/docx.umd.min.js';
-  script.async = true;
-  document.head.appendChild(script);
+  return new Promise((resolve, reject) => {
+    if (typeof docx !== 'undefined') { resolve(); return; }
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/docx@8.5.0/build/index.umd.js';
+    script.onload = () => { console.log('docx library loaded successfully'); resolve(); };
+    script.onerror = () => { console.error('docx library failed to load'); reject(); };
+    document.head.appendChild(script);
+  });
 }
 
 // ============================================================
@@ -411,8 +414,8 @@ function copyReview() {
 }
 
 async function downloadWordDoc() {
+  console.log('docx library status:', typeof docx);
   if (!lastReviewText) { alert('No review to download. Generate a review first.'); return; }
-  if (typeof docx === 'undefined') { alert('Word doc library still loading, please try again in a moment.'); return; }
 
   const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = docx;
   const lines    = lastReviewText.split('\n');
