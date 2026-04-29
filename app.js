@@ -3,12 +3,12 @@
 //  CONFIGURATION — update before deploying
 // ============================================================
 const CONFIG = {
-  password:       'Allstate2026$$',
+  password:       'SchAgency2025!',
   proxyUrl:       'proxy.php',
   sheetId:        '1M8LvVrgPCarObzGSWeicjpQSh43FvfSDm79wk1efOW4',
   incidentSheet:  'Incidents',
   reviewSheet:    'Reviews',
-  googleClientId: '152603955396-tsmdqffv4d0v3kuhfdpvi3hp83jehkru.apps.googleusercontent.com',
+  googleClientId: 'YOUR_GOOGLE_CLIENT_ID',
   driveFolderName:'Employee Reviews',
 };
 
@@ -285,6 +285,20 @@ function getRatingsSummary() {
   }).join('\n');
 }
 
+function formatReviewText(text) {
+  return text
+    .replace(/\r\n/g, '\n')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/^## (.+)$/gm, '<h2 style="margin:1.25rem 0 0.5rem;font-size:17px;font-weight:700;border-bottom:1px solid #eee;padding-bottom:4px">$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1 style="margin:1.5rem 0 0.75rem;font-size:20px;font-weight:700">$1</h1>')
+    .replace(/^ {2,}[-*] (.+)$/gm, '<li style="margin-left:3rem;margin-bottom:3px;color:#555">$1</li>')
+    .replace(/^[-*•] (.+)$/gm, '<li style="margin-left:1.5rem;margin-bottom:5px;line-height:1.6">$1</li>')
+    .replace(/^---+$/gm, '<hr style="border:none;border-top:1px solid #eee;margin:1rem 0">')
+    .replace(/\n\n/g, '<br><br>')
+    .replace(/\n/g, '<br>');
+}
+
 // ============================================================
 //  Generate review
 // ============================================================
@@ -329,7 +343,7 @@ async function generateReview() {
     lastReviewEmp  = emp;
     lastReviewType = type;
 
-    outputText.textContent  = text;
+    outputText.innerHTML = formatReviewText(text);
     outputBox.style.display = 'block';
     outputBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (err) {
@@ -682,4 +696,3 @@ async function setupSheetHeaders() {
     alert('Sheet headers set up successfully. Make sure you have both an "Incidents" tab and a "Reviews" tab in your Google Sheet.');
   });
 }
-
