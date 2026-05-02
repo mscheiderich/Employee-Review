@@ -90,7 +90,23 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    return sendJson(res, 200, data);
+    const generatedText = data?.content?.[0]?.text;
+
+if (!generatedText) {
+  return sendJson(res, 502, {
+    error: 'Anthropic returned no text content.',
+    details: data || null,
+  });
+}
+
+return sendJson(res, 200, {
+  content: [
+    {
+      type: 'text',
+      text: generatedText,
+    },
+  ],
+});
   } catch (err) {
     return sendJson(res, 502, {
       error: 'Failed to reach Anthropic API.',
