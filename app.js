@@ -83,20 +83,46 @@ let rootFolderId    = null;
 // ============================================================
 //  Auth
 // ============================================================
+function togglePassword() {
+  const input = document.getElementById('login-pass');
+  const btn   = document.getElementById('toggle-pass-btn');
+  if (input.type === 'password') {
+    input.type   = 'text';
+    btn.textContent = 'Hide';
+  } else {
+    input.type   = 'password';
+    btn.textContent = 'Show';
+  }
+}
+
+function loadSavedPassword() {
+  const saved = localStorage.getItem('saved-password');
+  if (saved) {
+    document.getElementById('login-pass').value     = saved;
+    document.getElementById('remember-pass').checked = true;
+  }
+}
+
 function checkLogin() {
-  const user = document.getElementById('login-user').value;
-  const pass = document.getElementById('login-pass').value;
-  const err  = document.getElementById('login-error');
+  const user     = document.getElementById('login-user').value;
+  const pass     = document.getElementById('login-pass').value;
+  const err      = document.getElementById('login-error');
+  const remember = document.getElementById('remember-pass').checked;
 
   if (!user) { err.textContent = 'Please select who you are.'; err.style.display = 'block'; return; }
   if (pass !== CONFIG.password) { err.textContent = 'Incorrect password.'; err.style.display = 'block'; return; }
 
+  if (remember) {
+    localStorage.setItem('saved-password', pass);
+  } else {
+    localStorage.removeItem('saved-password');
+  }
+
   currentUser = user;
   sessionStorage.setItem('auth', '1');
   sessionStorage.setItem('user', user);
-
   document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('app').style.display = 'block';
+  document.getElementById('app').style.display          = 'block';
   initApp();
 }
 
@@ -404,14 +430,6 @@ Write a complete professional employee review with these sections:
 5. Areas for Growth & Development (bullet points, supportive framing)${hasCompliance ? '\n6. Compliance & Critical Issues (firm, professional, specific)' : ''}${hasGoals ? '\n' + goalSection + '. Goals for ' + year + ' (bullet points)' : ''}`;
 }
 
-function copyReview() {
-  navigator.clipboard.writeText(lastReviewText).then(() => {
-    const btn = document.querySelector('.copy-btn');
-    const orig = btn.textContent;
-    btn.textContent = 'Copied!';
-    setTimeout(() => { btn.textContent = orig; }, 2000);
-  });
-}
 
 async function downloadWordDoc() {
   console.log('docx library status:', typeof docx);
@@ -552,18 +570,32 @@ function loadGoogleAuth() {
 
 function getGoogleToken(callback) {
   if (googleToken) { callback(); return; }
-
+  if (typeof google === 'undefined') {
+    setTimeout(() => getGoogleToken(callback), 300);
+    return;
+  }
   const client = google.accounts.oauth2.initTokenClient({
     client_id: CONFIG.googleClientId,
     scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file',
     callback: (response) => {
-      if (response.error) { alert('Google sign-in failed: ' + response.error); return; }
+      if (response.error) {
+        alert('Google authorization failed: ' + response.error +
+          '\n\nPlease make sure you are signing in with your ' +
+          'gahomeinsuranceexperts.com Google account.');
+        return;
+      }
       googleToken = response.access_token;
       callback();
     },
+    error_callback: (error) => {
+      if (error.type === 'popup_closed') {
+        alert('Authorization window was closed. Please try again and complete the Google sign-in.');
+      } else {
+        alert('Authorization error: ' + error.type);
+      }
+    },
   });
-
-  client.requestAccessToken();
+  client.requestAccessToken({ prompt: 'consent' });
 }
 
 // ============================================================
@@ -754,3 +786,5 @@ async function setupSheetHeaders() {
     alert('Sheet headers set up successfully. Make sure you have both an "Incidents" tab and a "Reviews" tab in your Google Sheet.');
   });
 }
+
+document.addEventListener('DOMContentLoaded', loadSavedPassword);
