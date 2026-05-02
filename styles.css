@@ -53,17 +53,33 @@ body {
 
 .login-box input:focus { border-color: #1a1a1a; }
 
-.login-box button {
-  width: 100%;
-  padding: 10px;
-  background: #1a1a1a;
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-}
+-.login-box button {
++.login-box > button:not(#toggle-pass-btn) {
+   width: 100%;
+   padding: 10px;
+   background: #1a1a1a;
+   color: #fff;
+   border: none;
+@@
+-}
++}
+ 
+-.login-box button:hover { background: #333; }
++.login-box > button:not(#toggle-pass-btn):hover { background: #333; }
++
++#toggle-pass-btn {
++  width: auto;
++  padding: 0;
++  margin: 0;
++  background: none;
++  border: none;
++  border-radius: 0;
++  font-size: 13px;
++  color: #888;
++  cursor: pointer;
++  line-height: 1;
++}
+
 
 .login-box button:hover { background: #333; }
 
