@@ -326,82 +326,152 @@ function formatReviewText(text) {
     .replace(/\n/g, '<br>');
 }
 
-function formatReviewForGoogleDocs(text) {
-  const lines = text.replace(/\r\n/g, '\n').split('\n');
+function formatReviewForGoogleDocs(text, context = {}) {
   const blocks = [];
+  const titleText = 'ANNUAL EMPLOYEE REVIEW';
+  const subtitleText = 'Scheiderich Insurance Agency - Allstate';
+
+  blocks.push({ type: 'title', text: titleText });
+  blocks.push({ type: 'subtitle', text: subtitleText });
+  pushSpacer(blocks);
+
+  const metadata = [
+    ['Employee', context.employee || ''],
+    ['Review Type', context.reviewType || ''],
+    ['Review Period', buildReviewPeriod(context.reviewDate)],
+    ['Review Date', context.reviewDate || ''],
+    ['Reviewer', context.reviewer || ''],
+  ];
+
+  metadata.forEach(([label, value]) => {
+    blocks.push({
+      type: 'metadata',
+      label,
+      value: normalizeDocText(value),
+    });
+  });
+
+  pushSpacer(blocks);
+
+  const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
 
   for (const rawLine of lines) {
-    const line = rawLine.trimEnd();
-    const trimmed = line.trim();
-
+    const trimmed = rawLine.trim();
     if (!trimmed) {
-      blocks.push({ type: 'spacer' });
+      pushSpacer(blocks);
       continue;
     }
 
     if (/^---+$/.test(trimmed)) {
-      blocks.push({ type: 'spacer' });
+      pushSpacer(blocks);
       continue;
     }
 
-    const headingMatch = trimmed.match(/^(#{1,3})\s+(.+)$/);
-    if (headingMatch) {
+    if (/^\s*[-*?]\s+/.test(trimmed)) {
+      const bulletText = normalizeDocText(trimmed.replace(/^\s*[-*?]\s+/, ''));
+      if (bulletText) {
+        blocks.push({ type: 'bullet', text: bulletText });
+      }
+      continue;
+    }
+
+    const clean = normalizeDocText(trimmed);
+    if (!clean) {
+      pushSpacer(blocks);
+      continue;
+    }
+
+    if (isTitleLine(clean) || isSubtitleLine(clean) || isMetadataLine(clean)) {
+      continue;
+    }
+
+    if (isSectionHeading(clean)) {
+      blocks.push({ type: 'sectionHeading', text: clean.toUpperCase() });
+      continue;
+    }
+
+    const labelParagraph = splitLabelParagraph(clean);
+    if (labelParagraph) {
       blocks.push({
-        type: 'heading',
-        level: headingMatch[1].length,
-        segments: tokenizeMarkdownSegments(headingMatch[2]),
+        type: 'labelParagraph',
+        label: labelParagraph.label,
+        value: labelParagraph.value,
       });
       continue;
     }
 
-    const allCapsHeading = trimmed.match(/^[A-Z0-9][A-Z0-9 &/,:.'()-]{6,}$/);
-    if (allCapsHeading && !trimmed.endsWith(':')) {
-      blocks.push({
-        type: 'heading',
-        level: 1,
-        segments: tokenizeMarkdownSegments(trimmed),
-      });
-      continue;
-    }
-
-    const bulletMatch = line.match(/^(?:\\s{2,})?[-*•]\\s+(.+)$/);
-    if (bulletMatch) {
-      blocks.push({
-        type: 'bullet',
-        level: /^\s{2,}[-*•]\s+/.test(line) ? 1 : 0,
-        segments: tokenizeMarkdownSegments(bulletMatch[1]),
-      });
-      continue;
-    }
-
-    blocks.push({
-      type: 'paragraph',
-      segments: tokenizeMarkdownSegments(line),
-    });
+    blocks.push({ type: 'paragraph', text: clean });
   }
 
   return blocks;
 }
 
-function tokenizeMarkdownSegments(text) {
-  const segments = [];
-  const pattern = /\*\*(.*?)\*\*|\*(.*?)\*/g;
-  let lastIndex = 0;
-  let match;
+function pushSpacer(blocks) {
+  if (blocks.length === 0 || blocks[blocks.length - 1].type !== 'spacer') {
+    blocks.push({ type: 'spacer' });
+  }
+}
 
-  while ((match = pattern.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      segments.push({ text: text.slice(lastIndex, match.index), bold: false });
+function normalizeDocText(text) {
+  return String(text || '')
+    .replace(/^\s*#{1,6}\s*/, '')
+    .replace(/\*\*/g, '')
+    .replace(/\*/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isTitleLine(text) {
+  return normalizeDocText(text).toUpperCase() === 'ANNUAL EMPLOYEE REVIEW';
+}
+
+function isSubtitleLine(text) {
+  const normalized = normalizeDocText(text);
+  return /Scheiderich Insurance Agency/i.test(normalized) && /Allstate/i.test(normalized);
+}
+
+function isMetadataLine(text) {
+  return /^(Employee|Review Type|Review Period|Review Date|Reviewer)\s*:/i.test(normalizeDocText(text));
+}
+
+function isSectionHeading(text) {
+  const normalized = normalizeDocText(text).replace(/:$/, '').trim();
+  const upper = normalized.toUpperCase();
+  const known = new Set([
+    'OVERVIEW',
+    'SKILLS & COMPETENCIES',
+    'BEHAVIOR & ATTITUDE',
+    'STRENGTHS & ACHIEVEMENTS',
+    'AREAS FOR GROWTH & DEVELOPMENT',
+    'GOALS FOR NEXT PERIOD',
+    'COMPLIANCE OR FLAGGED ISSUES',
+  ]);
+
+  if (known.has(upper)) return true;
+  return upper.length > 0 && upper.length < 80 && upper === normalized && /^[A-Z0-9 &/,:.'()-]+$/.test(upper);
+}
+
+function splitLabelParagraph(text) {
+  const normalized = normalizeDocText(text);
+  const match = normalized.match(/^([A-Za-z][A-Za-z0-9 &/()-]{1,60}):\s*(.*)$/);
+  if (!match) return null;
+
+  const label = match[1].trim();
+  if (label.length > 60) return null;
+  return {
+    label,
+    value: match[2].trim(),
+  };
+}
+
+function buildReviewPeriod(reviewDate) {
+  if (reviewDate) {
+    const parsed = new Date(reviewDate);
+    if (!Number.isNaN(parsed.getTime())) {
+      return String(parsed.getFullYear());
     }
-    segments.push({ text: match[1] || match[2] || '', bold: Boolean(match[1]) });
-    lastIndex = match.index + match[0].length;
   }
-
-  if (lastIndex < text.length) {
-    segments.push({ text: text.slice(lastIndex), bold: false });
-  }
-
-  return segments.filter(segment => segment.text.length > 0);
+  return String(new Date().getFullYear());
 }
 
 function buildGoogleDocsRequests(blocks) {
@@ -410,69 +480,165 @@ function buildGoogleDocsRequests(blocks) {
 
   for (const block of blocks) {
     if (block.type === 'spacer') {
-      requests.push({
-        insertText: {
-          location: { index: cursor },
-          text: '\n',
-        },
-      });
-      cursor += 1;
+      cursor = insertPlainLine(requests, cursor, '');
       continue;
     }
 
-    const text = block.segments.map(segment => segment.text).join('');
-    const displayText = block.type === 'bullet' && block.level === 1 ? `\t${text}` : text;
-    const startIndex = cursor;
-    const endIndex = startIndex + displayText.length;
-
-    requests.push({
-      insertText: {
-        location: { index: startIndex },
-        text: displayText + '\n',
-      },
-    });
-
-    if (block.type === 'heading') {
-      requests.push({
-        updateParagraphStyle: {
-          range: { startIndex, endIndex: endIndex + 1 },
-          paragraphStyle: {
-            namedStyleType: block.level === 1 ? 'HEADING_1' : block.level === 2 ? 'HEADING_2' : 'HEADING_3',
-          },
-          fields: 'namedStyleType',
-        },
+    if (block.type === 'title') {
+      cursor = insertStyledLine(requests, cursor, block.text, {
+        textStyle: makeTextStyle(16, true),
+        paragraphStyle: makeParagraphStyle('CENTER', 100, 6, 0, true),
       });
+      continue;
+    }
+
+    if (block.type === 'subtitle') {
+      cursor = insertStyledLine(requests, cursor, block.text, {
+        textStyle: makeTextStyle(11, true),
+        paragraphStyle: makeParagraphStyle('CENTER', 100, 8, 0, true),
+      });
+      continue;
+    }
+
+    if (block.type === 'metadata') {
+      const lineText = block.value ? block.label + ': ' + block.value : block.label + ':';
+      cursor = insertStyledLine(requests, cursor, lineText, {
+        textStyle: makeTextStyle(11, false),
+        paragraphStyle: makeParagraphStyle('START', 115, 2, 0, false),
+        boldPrefixLength: block.label.length + 1,
+      });
+      continue;
+    }
+
+    if (block.type === 'sectionHeading') {
+      cursor = insertStyledLine(requests, cursor, block.text.toUpperCase(), {
+        textStyle: makeTextStyle(13, true),
+        paragraphStyle: makeParagraphStyle('START', 100, 4, 12, true),
+      });
+      continue;
+    }
+
+    if (block.type === 'labelParagraph') {
+      const lineText = block.value ? block.label + ': ' + block.value : block.label + ':';
+      cursor = insertStyledLine(requests, cursor, lineText, {
+        textStyle: makeTextStyle(11, false),
+        paragraphStyle: makeParagraphStyle('START', 115, 4, 0, false),
+        boldPrefixLength: block.label.length + 1,
+      });
+      continue;
     }
 
     if (block.type === 'bullet') {
-      requests.push({
-        createParagraphBullets: {
-          range: { startIndex, endIndex: endIndex + 1 },
-          bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE',
-        },
+      cursor = insertStyledLine(requests, cursor, block.text, {
+        textStyle: makeTextStyle(11, false),
+        paragraphStyle: makeParagraphStyle('START', 115, 2, 0, false),
+        bullet: true,
       });
+      continue;
     }
 
-    let segmentCursor = startIndex + (block.type === 'bullet' && block.level === 1 ? 1 : 0);
-    for (const segment of block.segments) {
-      const segmentStart = segmentCursor;
-      const segmentEnd = segmentStart + segment.text.length;
-      if (segment.bold) {
-        requests.push({
-          updateTextStyle: {
-            range: { startIndex: segmentStart, endIndex: segmentEnd },
-            textStyle: { bold: true },
-            fields: 'bold',
-          },
-        });
-      }
-      segmentCursor = segmentEnd;
-    }
-
-    cursor = endIndex + 1;
+    cursor = insertStyledLine(requests, cursor, block.text, {
+      textStyle: makeTextStyle(11, false),
+      paragraphStyle: makeParagraphStyle('START', 115, 4, 0, false),
+    });
   }
 
   return requests;
+}
+
+function insertPlainLine(requests, cursor, text) {
+  requests.push({
+    insertText: {
+      location: { index: cursor },
+      text: '\n',
+    },
+  });
+  return cursor + 1;
+}
+
+function insertStyledLine(requests, cursor, text, options = {}) {
+  const startIndex = cursor;
+  const endIndex = startIndex + text.length;
+
+  requests.push({
+    insertText: {
+      location: { index: startIndex },
+      text: text + '\n',
+    },
+  });
+
+  if (options.paragraphStyle) {
+    requests.push({
+      updateParagraphStyle: {
+        range: { startIndex, endIndex: endIndex + 1 },
+        paragraphStyle: options.paragraphStyle,
+        fields: options.paragraphFields || 'alignment,lineSpacing,spaceAbove,spaceBelow,keepWithNext',
+      },
+    });
+  }
+
+  if (options.textStyle) {
+    requests.push({
+      updateTextStyle: {
+        range: { startIndex, endIndex },
+        textStyle: options.textStyle,
+        fields: options.textFields || 'foregroundColor,fontSize,bold,underline',
+      },
+    });
+  }
+
+  if (options.boldPrefixLength) {
+    requests.push({
+      updateTextStyle: {
+        range: { startIndex, endIndex: startIndex + options.boldPrefixLength },
+        textStyle: makeTextStyle(11, true),
+        fields: 'foregroundColor,fontSize,bold,underline',
+      },
+    });
+  }
+
+  if (options.bullet) {
+    requests.push({
+      createParagraphBullets: {
+        range: { startIndex, endIndex: endIndex + 1 },
+        bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE',
+      },
+    });
+  }
+
+  return endIndex + 1;
+}
+
+function makeParagraphStyle(alignment, lineSpacing, spaceBelow, spaceAbove, keepWithNext) {
+  const style = {
+    alignment: alignment,
+    lineSpacing: lineSpacing,
+    spaceBelow: { magnitude: spaceBelow, unit: 'PT' },
+    spaceAbove: { magnitude: spaceAbove, unit: 'PT' },
+  };
+
+  if (keepWithNext) {
+    style.keepWithNext = true;
+  }
+
+  return style;
+}
+
+function makeTextStyle(fontSize, bold) {
+  return {
+    foregroundColor: {
+      color: {
+        rgbColor: {
+          red: 0,
+          green: 0,
+          blue: 0,
+        },
+      },
+    },
+    fontSize: { magnitude: fontSize, unit: 'PT' },
+    bold: !!bold,
+    underline: false,
+  };
 }
 
 function loadDocxLibrary() {
@@ -677,7 +843,7 @@ async function saveReview() {
       }
 
       // 5. Format the review content into Google Docs API requests
-      const requests = buildGoogleDocsRequests(formatReviewForGoogleDocs(lastReviewText));
+      const requests = buildGoogleDocsRequests(formatReviewForGoogleDocs(lastReviewText, { employee: lastReviewEmp, reviewType: type, reviewDate: date, reviewer }));
       const docsRes = await fetch(`https://docs.googleapis.com/v1/documents/${createdDoc.id}:batchUpdate`, {
         method: 'POST',
         headers: {
