@@ -354,6 +354,16 @@ function formatReviewForGoogleDocs(text) {
       continue;
     }
 
+    const allCapsHeading = trimmed.match(/^[A-Z0-9][A-Z0-9 &/,:.'()-]{6,}$/);
+    if (allCapsHeading && !trimmed.endsWith(':')) {
+      blocks.push({
+        type: 'heading',
+        level: 1,
+        segments: tokenizeMarkdownSegments(trimmed),
+      });
+      continue;
+    }
+
     const bulletMatch = line.match(/^(?:\\s{2,})?[-*•]\\s+(.+)$/);
     if (bulletMatch) {
       blocks.push({
@@ -375,7 +385,7 @@ function formatReviewForGoogleDocs(text) {
 
 function tokenizeMarkdownSegments(text) {
   const segments = [];
-  const pattern = /\*\*(.*?)\*\*/g;
+  const pattern = /\*\*(.*?)\*\*|\*(.*?)\*/g;
   let lastIndex = 0;
   let match;
 
@@ -383,7 +393,7 @@ function tokenizeMarkdownSegments(text) {
     if (match.index > lastIndex) {
       segments.push({ text: text.slice(lastIndex, match.index), bold: false });
     }
-    segments.push({ text: match[1], bold: true });
+    segments.push({ text: match[1] || match[2] || '', bold: Boolean(match[1]) });
     lastIndex = match.index + match[0].length;
   }
 
@@ -945,6 +955,7 @@ async function setupSheetHeaders() {
 }
 
 document.addEventListener('DOMContentLoaded', loadSavedPassword);
+
 
 
 
