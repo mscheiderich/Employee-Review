@@ -1,6 +1,6 @@
-// app.js v3 — clean rebuild, no template literal corruption
+﻿// app.js v3 â€” clean rebuild, no template literal corruption
 // ============================================================
-//  CONFIGURATION — update before deploying
+//  CONFIGURATION â€” update before deploying
 // ============================================================
 const CONFIG = {
   password: 'SchAgency2025!',
@@ -13,7 +13,7 @@ const CONFIG = {
 };
 
 // ============================================================
-//  Default employee list — admin can add more via the UI
+//  Default employee list â€” admin can add more via the UI
 // ============================================================
 const DEFAULT_EMPLOYEES = [
   'Chris Wolter',
@@ -270,10 +270,10 @@ function buildRatingRow([id, label]) {
       <span class="rating-label">${label}</span>
       <select class="rating-sel" id="${id}" onchange="updatePill('${id}','pill-${id}')">
         <option value="">Rate...</option>
-        <option value="4">4 — Exceeds</option>
-        <option value="3">3 — Meets</option>
-        <option value="2">2 — Needs improvement</option>
-        <option value="1">1 — Does not meet</option>
+        <option value="4">4 â€” Exceeds</option>
+        <option value="3">3 â€” Meets</option>
+        <option value="2">2 â€” Needs improvement</option>
+        <option value="1">1 â€” Does not meet</option>
       </select>
       <span id="pill-${id}" class="pill" style="min-width:80px;text-align:center"></span>
     </div>`;
@@ -320,10 +320,149 @@ function formatReviewText(text) {
     .replace(/^## (.+)$/gm, '<h2 style="margin:1.25rem 0 0.5rem;font-size:17px;font-weight:700;border-bottom:1px solid #eee;padding-bottom:4px">$1</h2>')
     .replace(/^# (.+)$/gm, '<h1 style="margin:1.5rem 0 0.75rem;font-size:20px;font-weight:700">$1</h1>')
     .replace(/^ {2,}[-*] (.+)$/gm, '<li style="margin-left:3rem;margin-bottom:3px;color:#555">$1</li>')
-    .replace(/^[-*•] (.+)$/gm, '<li style="margin-left:1.5rem;margin-bottom:5px;line-height:1.6">$1</li>')
+    .replace(/^[-*â€¢] (.+)$/gm, '<li style="margin-left:1.5rem;margin-bottom:5px;line-height:1.6">$1</li>')
     .replace(/^---+$/gm, '<hr style="border:none;border-top:1px solid #eee;margin:1rem 0">')
     .replace(/\n\n/g, '<br><br>')
     .replace(/\n/g, '<br>');
+}
+
+function formatReviewForGoogleDocs(text) {
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  const blocks = [];
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      blocks.push({ type: 'spacer' });
+      continue;
+    }
+
+    if (/^---+$/.test(trimmed)) {
+      blocks.push({ type: 'spacer' });
+      continue;
+    }
+
+    const headingMatch = trimmed.match(/^(#{1,3})\s+(.+)$/);
+    if (headingMatch) {
+      blocks.push({
+        type: 'heading',
+        level: headingMatch[1].length,
+        segments: tokenizeMarkdownSegments(headingMatch[2]),
+      });
+      continue;
+    }
+
+    const bulletMatch = line.match(/^(?:\\s{2,})?[-*•]\\s+(.+)$/);
+    if (bulletMatch) {
+      blocks.push({
+        type: 'bullet',
+        level: /^\s{2,}[-*•]\s+/.test(line) ? 1 : 0,
+        segments: tokenizeMarkdownSegments(bulletMatch[1]),
+      });
+      continue;
+    }
+
+    blocks.push({
+      type: 'paragraph',
+      segments: tokenizeMarkdownSegments(line),
+    });
+  }
+
+  return blocks;
+}
+
+function tokenizeMarkdownSegments(text) {
+  const segments = [];
+  const pattern = /\*\*(.*?)\*\*/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push({ text: text.slice(lastIndex, match.index), bold: false });
+    }
+    segments.push({ text: match[1], bold: true });
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    segments.push({ text: text.slice(lastIndex), bold: false });
+  }
+
+  return segments.filter(segment => segment.text.length > 0);
+}
+
+function buildGoogleDocsRequests(blocks) {
+  const requests = [];
+  let cursor = 1;
+
+  for (const block of blocks) {
+    if (block.type === 'spacer') {
+      requests.push({
+        insertText: {
+          location: { index: cursor },
+          text: '\n',
+        },
+      });
+      cursor += 1;
+      continue;
+    }
+
+    const text = block.segments.map(segment => segment.text).join('');
+    const displayText = block.type === 'bullet' && block.level === 1 ? `\t${text}` : text;
+    const startIndex = cursor;
+    const endIndex = startIndex + displayText.length;
+
+    requests.push({
+      insertText: {
+        location: { index: startIndex },
+        text: displayText + '\n',
+      },
+    });
+
+    if (block.type === 'heading') {
+      requests.push({
+        updateParagraphStyle: {
+          range: { startIndex, endIndex: endIndex + 1 },
+          paragraphStyle: {
+            namedStyleType: block.level === 1 ? 'HEADING_1' : block.level === 2 ? 'HEADING_2' : 'HEADING_3',
+          },
+          fields: 'namedStyleType',
+        },
+      });
+    }
+
+    if (block.type === 'bullet') {
+      requests.push({
+        createParagraphBullets: {
+          range: { startIndex, endIndex: endIndex + 1 },
+          bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE',
+        },
+      });
+    }
+
+    let segmentCursor = startIndex + (block.type === 'bullet' && block.level === 1 ? 1 : 0);
+    for (const segment of block.segments) {
+      const segmentStart = segmentCursor;
+      const segmentEnd = segmentStart + segment.text.length;
+      if (segment.bold) {
+        requests.push({
+          updateTextStyle: {
+            range: { startIndex: segmentStart, endIndex: segmentEnd },
+            textStyle: { bold: true },
+            fields: 'bold',
+          },
+        });
+      }
+      segmentCursor = segmentEnd;
+    }
+
+    cursor = endIndex + 1;
+  }
+
+  return requests;
 }
 
 function loadDocxLibrary() {
@@ -400,7 +539,7 @@ function buildPrompt({ emp, type, date, reviewer, sNotes, bNotes, strengths, gro
   const hasGoals      = goals && goals.trim();
   const goalSection   = hasCompliance ? '7' : '6';
 
-  return `You are drafting a professional employee review for the Scheiderich Insurance Agency (an Allstate agency). Use a tone of supportive growth — reviews should motivate and develop the employee, not punish them. Use bullet points where appropriate. Be specific and action-oriented.
+  return `You are drafting a professional employee review for the Scheiderich Insurance Agency (an Allstate agency). Use a tone of supportive growth â€” reviews should motivate and develop the employee, not punish them. Use bullet points where appropriate. Be specific and action-oriented.
 
 EMPLOYEE: ${emp}
 REVIEW TYPE: ${type}
@@ -415,7 +554,7 @@ ${bNotes ? '\nBehavior context: ' + bNotes : ''}
 STRENGTHS & ACHIEVEMENTS (rewrite professionally with bullet points):
 ${strengths || 'Not provided'}
 
-AREAS FOR GROWTH (rewrite in supportive, growth-focused language — frame as opportunities, use bullet points):
+AREAS FOR GROWTH (rewrite in supportive, growth-focused language â€” frame as opportunities, use bullet points):
 ${growth || 'Not provided'}
 
 GOALS FOR NEXT PERIOD (use bullet points):
@@ -423,7 +562,7 @@ ${goals || 'Not provided'}
 ${hasCompliance ? '\nCOMPLIANCE / FLAGGED ISSUES (address clearly and firmly but professionally):\n' + compliance : ''}
 
 Write a complete professional employee review with these sections:
-1. Overview (2–3 sentence summary)
+1. Overview (2â€“3 sentence summary)
 2. Skills & Competencies (reference ratings with context)
 3. Behavior & Attitude (reference ratings with context)
 4. Strengths & Achievements (bullet points)
@@ -450,14 +589,14 @@ async function downloadWordDoc() {
       children.push(new Paragraph({ text: line.replace(/^## /, ''), heading: HeadingLevel.HEADING_2 }));
     } else if (line.startsWith('### ')) {
       children.push(new Paragraph({ text: line.replace(/^### /, ''), heading: HeadingLevel.HEADING_3 }));
-    } else if (line.match(/^[-*•] /)) {
-      const text = line.replace(/^[-*•] /, '').replace(/\*\*(.*?)\*\*/g, '$1');
+    } else if (line.match(/^[-*â€¢] /)) {
+      const text = line.replace(/^[-*â€¢] /, '').replace(/\*\*(.*?)\*\*/g, '$1');
       children.push(new Paragraph({ text, bullet: { level: 0 } }));
     } else if (line.match(/^ {2,}[-*] /)) {
       const text = line.replace(/^ {2,}[-*] /, '').replace(/\*\*(.*?)\*\*/g, '$1');
       children.push(new Paragraph({ text, bullet: { level: 1 } }));
     } else if (line.match(/^---+$/)) {
-      children.push(new Paragraph({ text: '─────────────────────────────────' }));
+      children.push(new Paragraph({ text: 'â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€' }));
     } else {
       const parts = line.split(/\*\*(.*?)\*\*/g);
       const runs  = parts.map((part, i) => new TextRun({ text: part, bold: i % 2 === 1 }));
@@ -508,21 +647,39 @@ async function saveReview() {
       // 3. Get or create employee subfolder
       const empFolderId = await getOrCreateFolder(lastReviewEmp, rootFolderId);
 
-      // 4. Create the review file in Drive as a Google Doc
+      // 4. Create a blank Google Doc in Drive
       const fileName = lastReviewType + ' - ' + (date || new Date().toISOString().split('T')[0]);
-      const meta = JSON.stringify({
-        name: fileName,
-        mimeType: 'application/vnd.google-apps.document',
-        parents: [empFolderId],
-      });
-      const form = new FormData();
-      form.append('metadata', new Blob([meta], { type: 'application/json' }));
-      form.append('file', new Blob([lastReviewText], { type: 'text/plain' }));
-      await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+      const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
         method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + googleToken },
-        body: form,
+        headers: {
+          'Authorization': 'Bearer ' + googleToken,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: fileName,
+          mimeType: 'application/vnd.google-apps.document',
+          parents: [empFolderId],
+        }),
       });
+      const createdDoc = await createRes.json();
+      if (!createRes.ok || !createdDoc.id) {
+        throw new Error((createdDoc && createdDoc.error && createdDoc.error.message) || 'Could not create Google Doc.');
+      }
+
+      // 5. Format the review content into Google Docs API requests
+      const requests = buildGoogleDocsRequests(formatReviewForGoogleDocs(lastReviewText));
+      const docsRes = await fetch(`https://docs.googleapis.com/v1/documents/${createdDoc.id}:batchUpdate`, {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + googleToken,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ requests }),
+      });
+      const docsData = await docsRes.json().catch(() => null);
+      if (!docsRes.ok) {
+        throw new Error((docsData && docsData.error && docsData.error.message) || 'Could not format Google Doc.');
+      }
 
       saveBtn.textContent = 'Saved!';
       setTimeout(() => { saveBtn.textContent = 'Save to Drive & Sheets'; saveBtn.disabled = false; }, 2000);
@@ -770,7 +927,7 @@ function toggleReviewText(i) {
 }
 
 // ============================================================
-//  Sheet setup — run once via Admin tab
+//  Sheet setup â€” run once via Admin tab
 // ============================================================
 async function setupSheetHeaders() {
   getGoogleToken(async () => {
@@ -788,3 +945,8 @@ async function setupSheetHeaders() {
 }
 
 document.addEventListener('DOMContentLoaded', loadSavedPassword);
+
+
+
+
+
