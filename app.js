@@ -4,7 +4,7 @@
 // ============================================================
 const CONFIG = {
   password:       'SchAgency2025!',
-  proxyUrl:       'proxy.php',
+  proxyUrl: 	  '/api/generate-review',
   sheetId:        '1M8LvVrgPCarObzGSWeicjpQSh43FvfSDm79wk1efOW4',
   incidentSheet:  'Incidents',
   reviewSheet:    'Reviews',
