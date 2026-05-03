@@ -367,8 +367,9 @@ function formatReviewForGoogleDocs(text, context = {}) {
       continue;
     }
 
-    if (/^\s*[-*?]\s+/.test(trimmed)) {
-      const bulletText = normalizeDocText(trimmed.replace(/^\s*[-*?]\s+/, ''));
+    const bulletMatch = trimmed.match(/^\s*[-*\u2022]\s+(.+)$/);
+    if (bulletMatch) {
+      const bulletText = normalizeDocText(bulletMatch[1]);
       if (bulletText) {
         blocks.push({ type: 'bullet', text: bulletText });
       }
@@ -415,6 +416,7 @@ function pushSpacer(blocks) {
 function normalizeDocText(text) {
   return String(text || '')
     .replace(/^\s*#{1,6}\s*/, '')
+    .replace(/^\s*[-*\u2022]\s+/, '')
     .replace(/\*\*/g, '')
     .replace(/\*/g, '')
     .replace(/\s+/g, ' ')
@@ -441,6 +443,8 @@ function isSectionHeading(text) {
     'OVERVIEW',
     'SKILLS & COMPETENCIES',
     'BEHAVIOR & ATTITUDE',
+    'GOALS & DEVELOPMENT PLAN',
+    'FINAL COMMENTS',
     'STRENGTHS & ACHIEVEMENTS',
     'AREAS FOR GROWTH & DEVELOPMENT',
     'GOALS FOR NEXT PERIOD',
@@ -505,7 +509,7 @@ function buildGoogleDocsRequests(blocks) {
       cursor = insertStyledLine(requests, cursor, lineText, {
         textStyle: makeTextStyle(11, false),
         paragraphStyle: makeParagraphStyle('START', 115, 2, 0, false),
-        boldPrefixLength: block.label.length + 1,
+        boldPrefixLength: block.label.length,
       });
       continue;
     }
@@ -523,7 +527,7 @@ function buildGoogleDocsRequests(blocks) {
       cursor = insertStyledLine(requests, cursor, lineText, {
         textStyle: makeTextStyle(11, false),
         paragraphStyle: makeParagraphStyle('START', 115, 4, 0, false),
-        boldPrefixLength: block.label.length + 1,
+        boldPrefixLength: block.label.length,
       });
       continue;
     }
