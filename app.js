@@ -749,40 +749,12 @@ Write a complete professional employee review with these sections:
 5. Areas for Growth & Development (bullet points, supportive framing)${hasCompliance ? '\n6. Compliance & Critical Issues (firm, professional, specific)' : ''}${hasGoals ? '\n' + goalSection + '. Goals for ' + year + ' (bullet points)' : ''}`;
 }
 
-
 async function downloadWordDoc() {
   console.log('docx library status:', typeof docx);
   if (!lastReviewText) { alert('No review to download. Generate a review first.'); return; }
 
-  const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = docx;
-  const lines    = lastReviewText.split('\n');
-  const children = [];
-
-  for (const line of lines) {
-    if (!line.trim()) {
-      children.push(new Paragraph({ text: '' }));
-      continue;
-    }
-    if (line.startsWith('# ')) {
-      children.push(new Paragraph({ text: line.replace(/^# /, ''), heading: HeadingLevel.HEADING_1 }));
-    } else if (line.startsWith('## ')) {
-      children.push(new Paragraph({ text: line.replace(/^## /, ''), heading: HeadingLevel.HEADING_2 }));
-    } else if (line.startsWith('### ')) {
-      children.push(new Paragraph({ text: line.replace(/^### /, ''), heading: HeadingLevel.HEADING_3 }));
-    } else if (line.match(/^[-*â€¢] /)) {
-      const text = line.replace(/^[-*â€¢] /, '').replace(/\*\*(.*?)\*\*/g, '$1');
-      children.push(new Paragraph({ text, bullet: { level: 0 } }));
-    } else if (line.match(/^ {2,}[-*] /)) {
-      const text = line.replace(/^ {2,}[-*] /, '').replace(/\*\*(.*?)\*\*/g, '$1');
-      children.push(new Paragraph({ text, bullet: { level: 1 } }));
-    } else if (line.match(/^---+$/)) {
-      children.push(new Paragraph({ text: 'â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€' }));
-    } else {
-      const parts = line.split(/\*\*(.*?)\*\*/g);
-      const runs  = parts.map((part, i) => new TextRun({ text: part, bold: i % 2 === 1 }));
-      children.push(new Paragraph({ children: runs }));
-    }
-  }
+  const { Document, Packer, Paragraph, TextRun, AlignmentType } = docx;
+  const children = buildWordExportChildren(Paragraph, TextRun, AlignmentType);
 
   const doc  = new Document({ sections: [{ properties: {}, children }] });
   const blob = await Packer.toBlob(doc);
@@ -792,6 +764,173 @@ async function downloadWordDoc() {
   a.download = lastReviewEmp + ' - ' + lastReviewType + ' - ' + lastReviewDate + '.docx';
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function buildWordExportChildren(Paragraph, TextRun, AlignmentType) {
+  const children = [];
+  const reviewerInput = document.getElementById('reviewer');
+  const reviewDateInput = document.getElementById('rev-date');
+  const reviewer = reviewerInput ? reviewerInput.value : '';
+  const reviewDate = lastReviewDate || (reviewDateInput ? reviewDateInput.value : '');
+
+  children.push(new Paragraph({
+    children: [new TextRun({ text: 'ANNUAL EMPLOYEE REVIEW', bold: true, size: 32 })],
+    alignment: AlignmentType.CENTER,
+    spacing: { after: 80 },
+  }));
+  children.push(new Paragraph({
+    children: [new TextRun({ text: 'Scheiderich Insurance Agency - Allstate', bold: true, size: 22 })],
+    alignment: AlignmentType.CENTER,
+    spacing: { after: 240 },
+  }));
+  [
+    ['Employee', lastReviewEmp],
+    ['Review Type', lastReviewType],
+    ['Review Period', buildReviewPeriod(reviewDate)],
+    ['Review Date', reviewDate],
+    ['Reviewer', reviewer],
+  ].forEach(([label, value]) => {
+    children.push(buildWordLabelParagraph(Paragraph, TextRun, label, cleanWordText(value)));
+  });
+  pushWordBlankParagraph(children, Paragraph);
+
+  const lines = String(lastReviewText || '').replace(/\r\n/g, '\n').split('\n');
+  for (const line of lines) {
+    if (!line.trim()) {
+      pushWordBlankParagraph(children, Paragraph);
+      continue;
+    }
+
+    if (isWordDividerLine(line)) {
+      continue;
+    }
+
+    const bullet = getWordBulletLine(line);
+    if (bullet) {
+      children.push(new Paragraph({
+        children: [new TextRun({ text: bullet.text })],
+        bullet: { level: bullet.level },
+        spacing: { after: 60 },
+      }));
+      continue;
+    }
+
+    const clean = cleanWordText(line);
+    if (!clean || isWordTitleLine(clean) || isWordSubtitleLine(clean) || isWordMetadataLine(clean)) {
+      continue;
+    }
+
+    const sectionHeading = getWordSectionHeadingText(clean);
+    if (sectionHeading) {
+      children.push(new Paragraph({
+        children: [new TextRun({ text: sectionHeading, bold: true, size: 24 })],
+        spacing: { before: 240, after: 80 },
+      }));
+      continue;
+    }
+
+    const labelParagraph = splitWordLabelParagraph(clean);
+    if (labelParagraph) {
+      children.push(buildWordLabelParagraph(Paragraph, TextRun, labelParagraph.label, labelParagraph.value, 100));
+      continue;
+    }
+
+    children.push(new Paragraph({
+      children: [new TextRun({ text: clean })],
+      spacing: { after: 100 },
+    }));
+  }
+
+  return children;
+}
+
+function normalizeWordSpecialChars(text) {
+  return String(text || '')
+    .replace(/\u00e2\u201d\u20ac/g, '-')
+    .replace(/\u00e2\u20ac[\u201c\u201d]/g, '-')
+    .replace(/\u00e2\u20ac\u00a2/g, '-')
+    .replace(/[\u2013\u2014\u2022\u2500\u2501]/g, '-');
+}
+
+function cleanWordText(text) {
+  return normalizeWordSpecialChars(text)
+    .replace(/^\s*#{1,6}\s*/, '')
+    .replace(/^\s*[-*]\s+/, '')
+    .replace(/\*\*/g, '')
+    .replace(/\*/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isWordDividerLine(text) {
+  const compact = normalizeWordSpecialChars(text).replace(/\s+/g, '');
+  return /^[-_=~*]{3,}$/.test(compact);
+}
+
+function getWordBulletLine(text) {
+  const match = normalizeWordSpecialChars(text).match(/^(\s*)[-*]\s+(.+)$/);
+  if (!match) return null;
+  const bulletText = cleanWordText(match[2]);
+  if (!bulletText) return null;
+  return {
+    level: match[1].length >= 2 ? 1 : 0,
+    text: bulletText,
+  };
+}
+
+function isWordTitleLine(text) {
+  return cleanWordText(text).toUpperCase() === 'ANNUAL EMPLOYEE REVIEW';
+}
+
+function isWordSubtitleLine(text) {
+  const clean = cleanWordText(text);
+  return /Scheiderich Insurance Agency/i.test(clean) && /Allstate/i.test(clean);
+}
+
+function isWordMetadataLine(text) {
+  return /^(Employee|Review Type|Review Period|Review Date|Reviewer)\s*:/i.test(cleanWordText(text));
+}
+
+function getWordSectionHeadingText(text) {
+  const clean = cleanWordText(text).replace(/^\d+[.)]\s*/, '').replace(/:$/, '').trim();
+  const upper = clean.toUpperCase();
+  const sections = new Set([
+    'OVERVIEW',
+    'SKILLS & COMPETENCIES',
+    'BEHAVIOR & ATTITUDE',
+    'GOALS & DEVELOPMENT PLAN',
+    'FINAL COMMENTS',
+    'STRENGTHS & ACHIEVEMENTS',
+    'AREAS FOR GROWTH',
+    'AREAS FOR GROWTH & DEVELOPMENT',
+    'GOALS FOR NEXT PERIOD',
+    'COMPLIANCE & CRITICAL ISSUES',
+    'COMPLIANCE OR FLAGGED ISSUES',
+  ]);
+  return sections.has(upper) ? upper : '';
+}
+
+function splitWordLabelParagraph(text) {
+  const match = cleanWordText(text).match(/^([A-Za-z][A-Za-z0-9 &/()-]{1,60}):\s*(.*)$/);
+  if (!match) return null;
+  return {
+    label: match[1].trim(),
+    value: match[2].trim(),
+  };
+}
+
+function buildWordLabelParagraph(Paragraph, TextRun, label, value, spacingAfter = 40) {
+  return new Paragraph({
+    children: [
+      new TextRun({ text: label, bold: true }),
+      new TextRun({ text: value ? ': ' + value : ':' }),
+    ],
+    spacing: { after: spacingAfter },
+  });
+}
+
+function pushWordBlankParagraph(children, Paragraph) {
+  children.push(new Paragraph({ text: '' }));
 }
 
 // ============================================================
