@@ -154,6 +154,7 @@ async function initApp() {
   document.getElementById('header-user').textContent = currentUser;
   document.getElementById('reviewer').value          = currentUser;
   document.getElementById('inc-logger').value        = currentUser;
+  loadDriveFolderSetting();
 }
 
 // ============================================================
@@ -960,7 +961,12 @@ async function saveReview() {
 
       // 2. Get or create root Drive folder
       if (!rootFolderId) {
-        rootFolderId = await getOrCreateFolder(CONFIG.driveFolderName, 'root');
+        const savedFolderId = localStorage.getItem('drive-folder-id');
+        if (savedFolderId) {
+          rootFolderId = savedFolderId;
+        } else {
+          rootFolderId = await getOrCreateFolder(CONFIG.driveFolderName, 'root');
+        }
       }
 
       // 3. Get or create employee subfolder
@@ -968,7 +974,7 @@ async function saveReview() {
 
       // 4. Create a blank Google Doc in Drive
       const fileName = lastReviewType + ' - ' + (date || new Date().toISOString().split('T')[0]);
-      const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+      const createRes = await fetch('https://www.googleapis.com/drive/v3/files?supportsAllDrives=true', {
         method: 'POST',
         headers: {
           'Authorization': 'Bearer ' + googleToken,
@@ -1014,7 +1020,7 @@ async function saveReview() {
 async function getOrCreateFolder(name, parentId) {
   // Search for existing folder
   const query    = encodeURIComponent(`name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`);
-  const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`, {
+  const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true`, {
     headers: { 'Authorization': 'Bearer ' + googleToken },
   });
   const searchData = await searchRes.json();
@@ -1024,7 +1030,7 @@ async function getOrCreateFolder(name, parentId) {
   }
 
   // Create new folder
-  const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+  const createRes = await fetch('https://www.googleapis.com/drive/v3/files?supportsAllDrives=true', {
     method: 'POST',
     headers: { 'Authorization': 'Bearer ' + googleToken, 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] }),
@@ -1245,6 +1251,18 @@ function toggleReviewText(i) {
   }
 }
 
+
+function saveDriveFolderSetting() {
+  const val = document.getElementById('drive-folder-input').value.trim();
+  if (!val) { alert('Please paste a folder ID first.'); return; }
+  localStorage.setItem('drive-folder-id', val);
+  alert('Drive folder saved.');
+}
+
+function loadDriveFolderSetting() {
+  const saved = localStorage.getItem('drive-folder-id');
+  if (saved) document.getElementById('drive-folder-input').value = saved;
+}
 
 document.addEventListener('DOMContentLoaded', loadSavedPassword);
 

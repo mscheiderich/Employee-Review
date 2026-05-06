@@ -271,6 +271,13 @@
       <!-- ===== ADMIN TAB ===== -->
       <div id="tab-admin" class="tab-content">
         <div class="card">
+          <p class="sec-title">Google Drive Destination</p>
+          <label>Destination Folder ID</label>
+          <input type="text" id="drive-folder-input" placeholder="Paste Google Drive Folder ID" />
+          <p style="font-size:12px;color:#888;margin-top:6px">Open the destination folder in Google Drive and copy the ID from the URL after /folders/</p>
+          <button class="secondary-btn" style="margin-top:1rem" onclick="saveDriveFolderSetting()">Save Folder Setting</button>
+        </div>
+        <div class="card">
           <p class="sec-title">Manage Employees</p>
           <p style="font-size:13px;color:#666;margin-bottom:1rem;line-height:1.6">Add new employees here. They will automatically appear in all dropdowns and their Google Drive folder will be created when their first review is saved.</p>
           <div id="employee-list-admin"></div>
