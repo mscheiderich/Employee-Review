@@ -1018,23 +1018,29 @@ async function saveReview() {
 }
 
 async function getOrCreateFolder(name, parentId) {
-  // Search for existing folder
-  const query    = encodeURIComponent(`name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`);
-  const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true`, {
-    headers: { 'Authorization': 'Bearer ' + googleToken },
-  });
+  const query = encodeURIComponent(
+    `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`
+  );
+  const searchRes = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives`,
+    { headers: { 'Authorization': 'Bearer ' + googleToken } }
+  );
   const searchData = await searchRes.json();
-
   if (searchData.files && searchData.files.length > 0) {
     return searchData.files[0].id;
   }
-
-  // Create new folder
-  const createRes = await fetch('https://www.googleapis.com/drive/v3/files?supportsAllDrives=true', {
-    method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + googleToken, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] }),
-  });
+  const createRes = await fetch(
+    'https://www.googleapis.com/drive/v3/files?supportsAllDrives=true',
+    {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + googleToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: [parentId]
+      }),
+    }
+  );
   const createData = await createRes.json();
   return createData.id;
 }
