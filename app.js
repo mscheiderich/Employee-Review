@@ -1245,23 +1245,6 @@ function toggleReviewText(i) {
   }
 }
 
-// ============================================================
-//  Record setup — run once via Admin tab
-// ============================================================
-async function setupSheetHeaders() {
-  getGoogleToken(async () => {
-    const incHeaders = [['Timestamp','Employee','Date','Issue Type','Description','Action Taken','Logged By (Manager)']];
-    const revHeaders = [['Timestamp','Employee','Review Type','Review Date','Reviewer','Review Text']];
-
-    const base = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.sheetId}/values`;
-    const opts = { method: 'PUT', headers: { 'Authorization': 'Bearer ' + googleToken, 'Content-Type': 'application/json' } };
-
-    await fetch(`${base}/${CONFIG.incidentSheet}!A1:G1?valueInputOption=USER_ENTERED`, { ...opts, body: JSON.stringify({ values: incHeaders }) });
-    await fetch(`${base}/${CONFIG.reviewSheet}!A1:F1?valueInputOption=USER_ENTERED`,   { ...opts, body: JSON.stringify({ values: revHeaders }) });
-
-    alert('Record headers set up successfully. Make sure you have both an "Incidents" tab and a "Reviews" tab in your records.');
-  });
-}
 
 document.addEventListener('DOMContentLoaded', loadSavedPassword);
 
