@@ -145,7 +145,7 @@
             <p class="sec-title" style="margin:0">Generated Review</p>
             <div style="display:flex;gap:8px">
               <button class="copy-btn" onclick="downloadWordDoc()">Download Word Doc</button>
-              <button class="copy-btn" onclick="saveReview()" style="background:#1a1a1a;color:#fff;border-color:#1a1a1a">Save to Drive &amp; Sheets</button>
+              <button class="copy-btn" onclick="saveReview()" style="background:#1a1a1a;color:#fff;border-color:#1a1a1a">Save to Drive &amp; Records</button>
             </div>
           </div>
           <div id="review-text" class="review-output-text"></div>
@@ -157,7 +157,7 @@
       <div id="tab-incidents" class="tab-content">
 
         <div class="storage-note">
-          &#9679; Incidents save permanently to Google Sheets and are visible to both managers.
+          &#9679; Incidents save permanently and are visible to both managers.
         </div>
 
         <div class="card">
@@ -196,8 +196,8 @@
             <input type="text" id="inc-logger" placeholder="Auto-filled from login" readonly style="background:#f0f0f0" />
           </div>
           <button class="secondary-btn" style="margin-top:1rem" onclick="addIncident()">Add to Log</button>
-          <p id="inc-success" class="success-msg" style="display:none">Incident saved to Google Sheets.</p>
-          <p id="inc-error" class="error-msg" style="display:none">Error saving. Check your Google Sheets connection.</p>
+          <p id="inc-success" class="success-msg" style="display:none">Incident saved to Records.</p>
+          <p id="inc-error" class="error-msg" style="display:none">Error saving. Please check your connection.</p>
         </div>
 
         <p class="sec-title">Logged Incidents</p>
@@ -286,8 +286,8 @@
         <div class="card">
           <p class="sec-title">Setup</p>
           <p style="font-size:13px;color:#666;margin-bottom:1rem;line-height:1.6">Run these once during initial setup. Open your browser console (F12) and call these functions directly if needed.</p>
-          <button class="secondary-btn" onclick="setupSheetHeaders()">Initialize Google Sheet Headers</button>
-          <p style="font-size:12px;color:#888;margin-top:8px">Run this once to set up column headers in your Google Sheet.</p>
+          <button class="secondary-btn" onclick="setupSheetHeaders()">Initialize Record Headers</button>
+          <p style="font-size:12px;color:#888;margin-top:8px">Run this once to set up record column headers.</p>
         </div>
       </div>
 

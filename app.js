@@ -1,6 +1,6 @@
-﻿// app.js v3 â€” clean rebuild, no template literal corruption
+// app.js v3 — clean rebuild, no template literal corruption
 // ============================================================
-//  CONFIGURATION â€” update before deploying
+//  CONFIGURATION — update before deploying
 // ============================================================
 const CONFIG = {
   password: 'SchAgency2025!',
@@ -13,7 +13,7 @@ const CONFIG = {
 };
 
 // ============================================================
-//  Default employee list â€” admin can add more via the UI
+//  Default employee list — admin can add more via the UI
 // ============================================================
 const DEFAULT_EMPLOYEES = [
   'Chris Wolter',
@@ -270,10 +270,10 @@ function buildRatingRow([id, label]) {
       <span class="rating-label">${label}</span>
       <select class="rating-sel" id="${id}" onchange="updatePill('${id}','pill-${id}')">
         <option value="">Rate...</option>
-        <option value="4">4 â€” Exceeds</option>
-        <option value="3">3 â€” Meets</option>
-        <option value="2">2 â€” Needs improvement</option>
-        <option value="1">1 â€” Does not meet</option>
+        <option value="4">4 — Exceeds</option>
+        <option value="3">3 — Meets</option>
+        <option value="2">2 — Needs improvement</option>
+        <option value="1">1 — Does not meet</option>
       </select>
       <span id="pill-${id}" class="pill" style="min-width:80px;text-align:center"></span>
     </div>`;
@@ -320,7 +320,7 @@ function formatReviewText(text) {
     .replace(/^## (.+)$/gm, '<h2 style="margin:1.25rem 0 0.5rem;font-size:17px;font-weight:700;border-bottom:1px solid #eee;padding-bottom:4px">$1</h2>')
     .replace(/^# (.+)$/gm, '<h1 style="margin:1.5rem 0 0.75rem;font-size:20px;font-weight:700">$1</h1>')
     .replace(/^ {2,}[-*] (.+)$/gm, '<li style="margin-left:3rem;margin-bottom:3px;color:#555">$1</li>')
-    .replace(/^[-*â€¢] (.+)$/gm, '<li style="margin-left:1.5rem;margin-bottom:5px;line-height:1.6">$1</li>')
+    .replace(/^[-*•] (.+)$/gm, '<li style="margin-left:1.5rem;margin-bottom:5px;line-height:1.6">$1</li>')
     .replace(/^---+$/gm, '<hr style="border:none;border-top:1px solid #eee;margin:1rem 0">')
     .replace(/\n\n/g, '<br><br>')
     .replace(/\n/g, '<br>');
@@ -719,7 +719,7 @@ function buildPrompt({ emp, type, date, reviewer, sNotes, bNotes, strengths, gro
   const hasGoals      = goals && goals.trim();
   const goalSection   = hasCompliance ? '7' : '6';
 
-  return `You are drafting a professional employee review for the Scheiderich Insurance Agency (an Allstate agency). Use a tone of supportive growth â€” reviews should motivate and develop the employee, not punish them. Use bullet points where appropriate. Be specific and action-oriented.
+  return `You are drafting a professional employee review for the Scheiderich Insurance Agency (an Allstate agency). Use a tone of supportive growth — reviews should motivate and develop the employee, not punish them. Use bullet points where appropriate. Be specific and action-oriented.
 
 EMPLOYEE: ${emp}
 REVIEW TYPE: ${type}
@@ -734,7 +734,7 @@ ${bNotes ? '\nBehavior context: ' + bNotes : ''}
 STRENGTHS & ACHIEVEMENTS (rewrite professionally with bullet points):
 ${strengths || 'Not provided'}
 
-AREAS FOR GROWTH (rewrite in supportive, growth-focused language â€” frame as opportunities, use bullet points):
+AREAS FOR GROWTH (rewrite in supportive, growth-focused language — frame as opportunities, use bullet points):
 ${growth || 'Not provided'}
 
 GOALS FOR NEXT PERIOD (use bullet points):
@@ -742,7 +742,7 @@ ${goals || 'Not provided'}
 ${hasCompliance ? '\nCOMPLIANCE / FLAGGED ISSUES (address clearly and firmly but professionally):\n' + compliance : ''}
 
 Write a complete professional employee review with these sections:
-1. Overview (2â€“3 sentence summary)
+1. Overview (2–3 sentence summary)
 2. Skills & Competencies (reference ratings with context)
 3. Behavior & Attitude (reference ratings with context)
 4. Strengths & Achievements (bullet points)
@@ -934,7 +934,7 @@ function pushWordBlankParagraph(children, Paragraph) {
 }
 
 // ============================================================
-//  Save review to Google Sheets + Drive
+//  Save review to Records + Drive
 // ============================================================
 async function saveReview() {
   if (!lastReviewText) { alert('No review to save. Generate a review first.'); return; }
@@ -945,7 +945,7 @@ async function saveReview() {
 
   getGoogleToken(async () => {
     try {
-      // 1. Save to Sheets
+      // 1. Save to Records
       const date     = document.getElementById('rev-date').value;
       const type     = document.getElementById('rev-type').value;
       const reviewer = document.getElementById('reviewer').value;
@@ -1001,11 +1001,11 @@ async function saveReview() {
       }
 
       saveBtn.textContent = 'Saved!';
-      setTimeout(() => { saveBtn.textContent = 'Save to Drive & Sheets'; saveBtn.disabled = false; }, 2000);
+      setTimeout(() => { saveBtn.textContent = 'Save to Drive & Records'; saveBtn.disabled = false; }, 2000);
 
     } catch (err) {
       alert('Error saving: ' + err.message);
-      saveBtn.textContent = 'Save to Drive & Sheets';
+      saveBtn.textContent = 'Save to Drive & Records';
       saveBtn.disabled    = false;
     }
   });
@@ -1103,7 +1103,7 @@ async function addIncident() {
         headers: { 'Authorization': 'Bearer ' + googleToken, 'Content-Type': 'application/json' },
         body: JSON.stringify({ values: [row] }),
       });
-      if (!res.ok) throw new Error('Sheets API error ' + res.status);
+      if (!res.ok) throw new Error('Records API error ' + res.status);
 
       document.getElementById('inc-emp').value    = '';
       document.getElementById('inc-desc').value   = '';
@@ -1216,7 +1216,7 @@ function renderReviews() {
     : allReviews.filter(r => r.emp === historyFilter);
 
   if (!filtered.length) {
-    listEl.innerHTML = '<div class="empty-state">No reviews saved yet. Generate a review and click "Save to Drive & Sheets".</div>';
+    listEl.innerHTML = '<div class="empty-state">No reviews saved yet. Generate a review and click "Save to Drive & Records".</div>';
     return;
   }
 
@@ -1246,7 +1246,7 @@ function toggleReviewText(i) {
 }
 
 // ============================================================
-//  Sheet setup â€” run once via Admin tab
+//  Record setup — run once via Admin tab
 // ============================================================
 async function setupSheetHeaders() {
   getGoogleToken(async () => {
@@ -1259,7 +1259,7 @@ async function setupSheetHeaders() {
     await fetch(`${base}/${CONFIG.incidentSheet}!A1:G1?valueInputOption=USER_ENTERED`, { ...opts, body: JSON.stringify({ values: incHeaders }) });
     await fetch(`${base}/${CONFIG.reviewSheet}!A1:F1?valueInputOption=USER_ENTERED`,   { ...opts, body: JSON.stringify({ values: revHeaders }) });
 
-    alert('Sheet headers set up successfully. Make sure you have both an "Incidents" tab and a "Reviews" tab in your Google Sheet.');
+    alert('Record headers set up successfully. Make sure you have both an "Incidents" tab and a "Reviews" tab in your records.');
   });
 }
 
