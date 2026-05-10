@@ -37,6 +37,10 @@ module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
 
   if (req.method === 'GET') {
+    if (req.query && req.query.type === 'employees') {
+      const employees = await kvGet('employees') || [];
+      return res.status(200).end(JSON.stringify(employees));
+    }
     let users = await kvGet('users');
     if (!users) {
       users = DEFAULT_USERS;
@@ -47,7 +51,44 @@ module.exports = async function handler(req, res) {
 
   if (req.method === 'POST') {
     const body = typeof req.body === 'object' ? req.body : JSON.parse(req.body);
-    const { action, email, name, role } = body;
+    const { action, email, name, role, username, password, reviewName } = body;
+
+    if (action === 'add-employee') {
+      if (!username || !name || !password || !reviewName) {
+        return res.status(400).end(JSON.stringify({ error: 'Missing fields' }));
+      }
+      let emps = await kvGet('employees') || [];
+      if (emps.find(e => e.username === username)) {
+        return res.status(400).end(JSON.stringify({ error: 'Username already exists' }));
+      }
+      emps.push({ username, name, password, reviewName, role: 'employee' });
+      await kvSet('employees', emps);
+      return res.status(200).end(JSON.stringify(emps));
+    }
+
+    if (action === 'remove-employee') {
+      let emps = await kvGet('employees') || [];
+      emps = emps.filter(e => e.username !== username);
+      await kvSet('employees', emps);
+      return res.status(200).end(JSON.stringify(emps));
+    }
+
+    if (action === 'reset-password') {
+      let emps = await kvGet('employees') || [];
+      const idx = emps.findIndex(e => e.username === username);
+      if (idx === -1) {
+        return res.status(404).end(JSON.stringify({ error: 'Employee not found' }));
+      }
+      emps[idx].password = password;
+      await kvSet('employees', emps);
+      return res.status(200).end(JSON.stringify(emps));
+    }
+
+    if (action === 'list-employees') {
+      const emps = await kvGet('employees') || [];
+      return res.status(200).end(JSON.stringify(emps));
+    }
+
     let users = await kvGet('users') || DEFAULT_USERS;
 
     if (action === 'add') {

@@ -168,7 +168,7 @@ async function initApp() {
   document.getElementById('reviewer').value          = currentUser;
   document.getElementById('inc-logger').value        = currentUser;
   loadDriveFolderSetting();
-  if (currentUserRole === 'admin') loadUsersList();
+  if (currentUserRole === 'admin') { loadUsersList(); loadEmployeesList(); }
 }
 
 // ============================================================
@@ -186,8 +186,8 @@ function saveEmployees() {
   localStorage.setItem('scheiderich-employees', JSON.stringify(employees));
 }
 
-function addEmployee() {
-  const name = document.getElementById('new-emp-name').value.trim();
+function addReviewEmployee() {
+  const name = document.getElementById('new-review-emp-name').value.trim();
   if (!name) { alert('Please enter a name.'); return; }
   if (employees.includes(name)) { alert('That employee already exists.'); return; }
 
@@ -198,7 +198,7 @@ function addEmployee() {
   renderAdminEmployeeList();
   buildFilterBars();
 
-  document.getElementById('new-emp-name').value = '';
+  document.getElementById('new-review-emp-name').value = '';
   const msg = document.getElementById('emp-success');
   msg.style.display = 'block';
   setTimeout(() => { msg.style.display = 'none'; }, 3000);
@@ -1347,6 +1347,162 @@ async function removeUser(email) {
     body: JSON.stringify({ action: 'remove', email })
   });
   if (res.ok) await loadUsersList();
+}
+
+// ============================================================
+//  Employee portal auth (login page)
+// ============================================================
+function toggleEmpPassword() {
+  const input = document.getElementById('emp-password');
+  const span = input.nextElementSibling;
+  if (input.type === 'password') {
+    input.type = 'text';
+    span.textContent = 'HIDE';
+  } else {
+    input.type = 'password';
+    span.textContent = 'SHOW';
+  }
+}
+
+function toggleNewEmpPassword() {
+  const input = document.getElementById('new-emp-password');
+  const span = input.nextElementSibling;
+  if (input.type === 'password') {
+    input.type = 'text';
+    span.textContent = 'HIDE';
+  } else {
+    input.type = 'password';
+    span.textContent = 'SHOW';
+  }
+}
+
+async function employeeLogin() {
+  const username = document.getElementById('emp-username').value.trim();
+  const password = document.getElementById('emp-password').value.trim();
+  const errEl = document.getElementById('login-error');
+  errEl.style.display = 'none';
+  if (!username || !password) {
+    errEl.textContent = 'Please enter username and password.';
+    errEl.style.display = 'block';
+    return;
+  }
+  try {
+    const res = await fetch('/api/users?type=employees');
+    const employees = await res.json();
+    const list = Array.isArray(employees) ? employees :
+      (employees.value ? JSON.parse(employees.value) : []);
+    const match = list.find(e =>
+      e.username.toLowerCase() === username.toLowerCase() &&
+      e.password === password
+    );
+    if (!match) {
+      errEl.textContent = 'Invalid username or password.';
+      errEl.style.display = 'block';
+      return;
+    }
+    sessionStorage.setItem('auth', 'employee');
+    sessionStorage.setItem('empName', match.name);
+    sessionStorage.setItem('empReviewName', match.reviewName);
+    window.location.href = '/employee.html';
+  } catch(e) {
+    errEl.textContent = 'Login failed. Please try again.';
+    errEl.style.display = 'block';
+  }
+}
+
+// ============================================================
+//  Employee portal management (admin tab)
+// ============================================================
+async function loadEmployeesList() {
+  const container = document.getElementById('employees-list');
+  if (!container) return;
+  try {
+    const res = await fetch('/api/users?type=employees');
+    const data = await res.json();
+    const list = Array.isArray(data) ? data :
+      (data.value ? JSON.parse(data.value) : []);
+    if (list.length === 0) {
+      container.innerHTML =
+        '<p style="color:#888;font-size:13px;">No employee accounts yet.</p>';
+      return;
+    }
+    container.innerHTML = list.map(e => `
+      <div style="display:flex;align-items:center;
+        justify-content:space-between;padding:8px 0;
+        border-bottom:1px solid #eee;">
+        <div>
+          <strong>${e.name}</strong>
+          <span style="color:#888;font-size:12px;margin-left:8px;">
+            @${e.username}</span>
+          <span style="color:#aaa;font-size:12px;margin-left:8px;">
+            Reviews as: ${e.reviewName}</span>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button onclick="resetEmpPassword('${e.username}')"
+            style="background:none;border:1px solid #ddd;
+            border-radius:6px;padding:4px 10px;cursor:pointer;
+            color:#666;font-size:12px;">Reset Password</button>
+          <button onclick="removeEmployee('${e.username}')"
+            style="background:none;border:1px solid #ddd;
+            border-radius:6px;padding:4px 10px;cursor:pointer;
+            color:#991b1b;font-size:12px;">Remove</button>
+        </div>
+      </div>
+    `).join('');
+  } catch(e) {
+    container.innerHTML =
+      '<p style="color:red;font-size:13px;">Failed to load employees.</p>';
+  }
+}
+
+async function addEmployee() {
+  const name = document.getElementById('new-emp-name').value.trim();
+  const username = document.getElementById('new-emp-username').value.trim();
+  const reviewName = document.getElementById('new-emp-reviewname').value.trim();
+  const password = document.getElementById('new-emp-password').value.trim();
+  if (!name || !username || !reviewName || !password) {
+    alert('Please fill in all fields.'); return;
+  }
+  const res = await fetch('/api/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'add-employee', name, username, reviewName, password })
+  });
+  if (res.ok) {
+    document.getElementById('new-emp-name').value = '';
+    document.getElementById('new-emp-username').value = '';
+    document.getElementById('new-emp-reviewname').value = '';
+    document.getElementById('new-emp-password').value = '';
+    await loadEmployeesList();
+  } else {
+    const err = await res.json();
+    alert(err.error || 'Failed to add employee.');
+  }
+}
+
+async function removeEmployee(username) {
+  if (!confirm(`Remove employee account @${username}?`)) return;
+  const res = await fetch('/api/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'remove-employee', username })
+  });
+  if (res.ok) await loadEmployeesList();
+}
+
+async function resetEmpPassword(username) {
+  const newPass = prompt(`Enter new password for @${username}:`);
+  if (!newPass) return;
+  const res = await fetch('/api/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'reset-password', username, password: newPass })
+  });
+  if (res.ok) {
+    alert('Password updated successfully.');
+  } else {
+    alert('Failed to update password.');
+  }
 }
 
 
