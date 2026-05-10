@@ -961,18 +961,10 @@ async function saveReview() {
 
   getGoogleToken(async () => {
     try {
-      // 1. Save to Records
+      // 1. Collect form values
       const date     = document.getElementById('rev-date').value;
       const type     = document.getElementById('rev-type').value;
       const reviewer = document.getElementById('reviewer').value;
-      const row      = [new Date().toISOString(), lastReviewEmp, type, date, reviewer, lastReviewText.substring(0, 5000)];
-
-      const sheetsUrl = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.sheetId}/values/${CONFIG.reviewSheet}!A:F:append?valueInputOption=USER_ENTERED`;
-      await fetch(sheetsUrl, {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + googleToken, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ values: [row] }),
-      });
 
       // 2. Get or create root Drive folder
       if (!rootFolderId) {
@@ -989,7 +981,7 @@ async function saveReview() {
 
       // 4. Create a blank Google Doc in Drive
       const fileName = lastReviewType + ' - ' + (date || new Date().toISOString().split('T')[0]);
-      const createRes = await fetch('https://www.googleapis.com/drive/v3/files?supportsAllDrives=true', {
+      const createRes = await fetch('https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id,name,webViewLink', {
         method: 'POST',
         headers: {
           'Authorization': 'Bearer ' + googleToken,
@@ -1005,8 +997,20 @@ async function saveReview() {
       if (!createRes.ok || !createdDoc.id) {
         throw new Error((createdDoc && createdDoc.error && createdDoc.error.message) || 'Could not create Google Doc.');
       }
+      const docUrl = createdDoc.webViewLink ||
+        `https://docs.google.com/document/d/${createdDoc.id}/edit`;
 
-      // 5. Format the review content into Google Docs API requests
+      // 5. Save to Records (column G = "Doc URL" in the sheet)
+      // Sheet columns: A=Timestamp, B=Employee, C=Type, D=Date, E=Reviewer, F=Review Text, G=Doc URL
+      const row = [new Date().toISOString(), lastReviewEmp, type, date, reviewer, lastReviewText.substring(0, 5000), docUrl];
+      const sheetsUrl = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.sheetId}/values/${CONFIG.reviewSheet}!A:G:append?valueInputOption=USER_ENTERED`;
+      await fetch(sheetsUrl, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + googleToken, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: [row] }),
+      });
+
+      // 6. Format the review content into Google Docs API requests
       const requests = buildGoogleDocsRequests(formatReviewForGoogleDocs(lastReviewText, { employee: lastReviewEmp, reviewType: type, reviewDate: date, reviewer }));
       const docsRes = await fetch(`https://docs.googleapis.com/v1/documents/${createdDoc.id}:batchUpdate`, {
         method: 'POST',
