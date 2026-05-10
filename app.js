@@ -90,7 +90,14 @@ async function loadApprovedUsers() {
     if (!res.ok) return [];
     const data = await res.json();
     console.log('Users from API:', JSON.stringify(data));
-    return Array.isArray(data) ? data : [];
+    if (Array.isArray(data)) return data;
+    if (data.value) {
+      const parsed = typeof data.value === 'string'
+        ? JSON.parse(data.value)
+        : data.value;
+      return Array.isArray(parsed) ? parsed : [];
+    }
+    return [];
   } catch(e) {
     console.error('Failed to load users:', e);
     return [];
