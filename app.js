@@ -1071,7 +1071,7 @@ function getGoogleToken(callback) {
   }
   const client = google.accounts.oauth2.initTokenClient({
     client_id: CONFIG.googleClientId,
-    scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents',
+    scope: 'openid email https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents',
     callback: async (response) => {
       if (response.error) {
         alert('Google authorization failed: ' + response.error +
