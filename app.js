@@ -144,7 +144,7 @@ async function initApp() {
   loadEmployees();
   buildRatingGroups();
   setDefaultDates();
-  loadGoogleAuth();
+
   await loadDocxLibrary();
   document.getElementById('header-user').textContent = currentUser;
   document.getElementById('reviewer').value          = currentUser;
@@ -1052,14 +1052,6 @@ async function getOrCreateFolder(name, parentId) {
 // ============================================================
 //  Google OAuth
 // ============================================================
-function loadGoogleAuth() {
-  const script  = document.createElement('script');
-  script.src    = 'https://accounts.google.com/gsi/client';
-  script.async  = true;
-  script.defer  = true;
-  document.head.appendChild(script);
-}
-
 function getGoogleToken(callback) {
   if (googleToken) { if (callback) callback(); return; }
   if (typeof google === 'undefined') {
