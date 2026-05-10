@@ -16,6 +16,26 @@ async function kvGet(key) {
   }
 }
 
+async function kvGetEmployees() {
+  const res = await fetch(`${KV_URL}/get/employees`, {
+    headers: { Authorization: `Bearer ${KV_TOKEN}` }
+  });
+  const data = await res.json();
+  if (!data.result) return [];
+  try {
+    let parsed = JSON.parse(data.result);
+    if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+    if (parsed && parsed.value) {
+      parsed = typeof parsed.value === 'string'
+        ? JSON.parse(parsed.value)
+        : parsed.value;
+    }
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 async function kvSet(key, value) {
   const res = await fetch(`${KV_URL}/set/${key}`, {
     method: 'POST',
@@ -36,11 +56,12 @@ const DEFAULT_USERS = [
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
 
+  if (req.method === 'GET' && req.query && req.query.type === 'employees') {
+    const employees = await kvGetEmployees();
+    return res.status(200).end(JSON.stringify(employees));
+  }
+
   if (req.method === 'GET') {
-    if (req.query && req.query.type === 'employees') {
-      const employees = await kvGet('employees') || [];
-      return res.status(200).end(JSON.stringify(employees));
-    }
     let users = await kvGet('users');
     if (!users) {
       users = DEFAULT_USERS;
@@ -51,42 +72,42 @@ module.exports = async function handler(req, res) {
 
   if (req.method === 'POST') {
     const body = typeof req.body === 'object' ? req.body : JSON.parse(req.body);
-    const { action, email, name, role, username, password, reviewName } = body;
+    const { action, email, name, role, username, reviewName } = body;
 
     if (action === 'add-employee') {
-      if (!username || !name || !password || !reviewName) {
+      if (!username || !name || !body.password || !reviewName) {
         return res.status(400).end(JSON.stringify({ error: 'Missing fields' }));
       }
-      let emps = await kvGet('employees') || [];
-      if (emps.find(e => e.username === username)) {
+      const employees = await kvGetEmployees();
+      if (employees.find(e => e.username === username)) {
         return res.status(400).end(JSON.stringify({ error: 'Username already exists' }));
       }
-      emps.push({ username, name, password, reviewName, role: 'employee' });
-      await kvSet('employees', emps);
-      return res.status(200).end(JSON.stringify(emps));
+      employees.push({ username, name, password: body.password, reviewName, role: 'employee' });
+      await kvSet('employees', employees);
+      return res.status(200).end(JSON.stringify(employees));
     }
 
     if (action === 'remove-employee') {
-      let emps = await kvGet('employees') || [];
-      emps = emps.filter(e => e.username !== username);
-      await kvSet('employees', emps);
-      return res.status(200).end(JSON.stringify(emps));
+      let employees = await kvGetEmployees();
+      employees = employees.filter(e => e.username !== username);
+      await kvSet('employees', employees);
+      return res.status(200).end(JSON.stringify(employees));
     }
 
     if (action === 'reset-password') {
-      let emps = await kvGet('employees') || [];
-      const idx = emps.findIndex(e => e.username === username);
+      let employees = await kvGetEmployees();
+      const idx = employees.findIndex(e => e.username === username);
       if (idx === -1) {
         return res.status(404).end(JSON.stringify({ error: 'Employee not found' }));
       }
-      emps[idx].password = password;
-      await kvSet('employees', emps);
-      return res.status(200).end(JSON.stringify(emps));
+      employees[idx].password = body.password;
+      await kvSet('employees', employees);
+      return res.status(200).end(JSON.stringify(employees));
     }
 
     if (action === 'list-employees') {
-      const emps = await kvGet('employees') || [];
-      return res.status(200).end(JSON.stringify(emps));
+      const employees = await kvGetEmployees();
+      return res.status(200).end(JSON.stringify(employees));
     }
 
     let users = await kvGet('users') || DEFAULT_USERS;
