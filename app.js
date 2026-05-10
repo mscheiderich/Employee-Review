@@ -938,6 +938,7 @@ function pushWordBlankParagraph(children, Paragraph) {
 //  Save review to Records + Drive
 // ============================================================
 async function saveReview() {
+  console.log('Drive folder ID from storage:', localStorage.getItem('drive-folder-id'));
   if (!lastReviewText) { alert('No review to save. Generate a review first.'); return; }
 
   const saveBtn = document.querySelector('.output-toolbar .copy-btn:last-child');
@@ -1018,14 +1019,16 @@ async function saveReview() {
 }
 
 async function getOrCreateFolder(name, parentId) {
+  const driveId = '0ALICr0fW_IE7Uk9PVA';
   const query = encodeURIComponent(
     `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`
   );
   const searchRes = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives`,
+    `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=drive&driveId=${driveId}`,
     { headers: { 'Authorization': 'Bearer ' + googleToken } }
   );
   const searchData = await searchRes.json();
+  console.log('Folder search result:', JSON.stringify(searchData));
   if (searchData.files && searchData.files.length > 0) {
     return searchData.files[0].id;
   }
@@ -1033,15 +1036,20 @@ async function getOrCreateFolder(name, parentId) {
     'https://www.googleapis.com/drive/v3/files?supportsAllDrives=true',
     {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + googleToken, 'Content-Type': 'application/json' },
+      headers: {
+        'Authorization': 'Bearer ' + googleToken,
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify({
         name,
         mimeType: 'application/vnd.google-apps.folder',
-        parents: [parentId]
+        parents: [parentId],
+        driveId: driveId
       }),
     }
   );
   const createData = await createRes.json();
+  console.log('Folder create result:', JSON.stringify(createData));
   return createData.id;
 }
 
@@ -1259,15 +1267,18 @@ function toggleReviewText(i) {
 
 
 function saveDriveFolderSetting() {
-  const val = document.getElementById('drive-folder-input').value.trim();
+  const input = document.getElementById('drive-folder-input');
+  const val = input ? input.value.trim() : '';
   if (!val) { alert('Please paste a folder ID first.'); return; }
+  localStorage.removeItem(val);
   localStorage.setItem('drive-folder-id', val);
-  alert('Drive folder saved.');
+  alert('Drive folder saved: ' + val);
 }
 
 function loadDriveFolderSetting() {
   const saved = localStorage.getItem('drive-folder-id');
-  if (saved) document.getElementById('drive-folder-input').value = saved;
+  const input = document.getElementById('drive-folder-input');
+  if (saved && input) input.value = saved;
 }
 
 document.addEventListener('DOMContentLoaded', loadSavedPassword);
