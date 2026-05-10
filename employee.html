@@ -86,9 +86,17 @@
 
 <div class="portal-container">
   <div id="reviews-container">
-    <p style="color:#888;text-align:center;padding:40px;">
-      Loading your reviews...
-    </p>
+    <div style="text-align:center;padding:60px 20px;">
+      <p style="color:#666;margin-bottom:20px;">
+        Click below to load your reviews
+      </p>
+      <button onclick="loadMyReviews()"
+        style="background:#1a1a1a;color:#fff;border:none;
+        padding:12px 28px;border-radius:8px;font-size:14px;
+        cursor:pointer;">
+        View My Reviews
+      </button>
+    </div>
   </div>
 </div>
 
@@ -196,7 +204,7 @@ function toggleReview(i) {
     !el.style.display ? 'block' : 'none';
 }
 
-loadMyReviews();
+
 </script>
 </body>
 </html>
