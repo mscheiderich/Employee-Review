@@ -85,8 +85,16 @@ let rootFolderId    = null;
 let currentUserRole = 'reviewer';
 
 async function loadApprovedUsers() {
-  const res = await fetch('/api/users');
-  return res.ok ? await res.json() : [];
+  try {
+    const res = await fetch('/api/users');
+    if (!res.ok) return [];
+    const data = await res.json();
+    console.log('Users from API:', JSON.stringify(data));
+    return Array.isArray(data) ? data : [];
+  } catch(e) {
+    console.error('Failed to load users:', e);
+    return [];
+  }
 }
 
 async function handleGoogleLogin(googleUser) {
@@ -1076,8 +1084,12 @@ function getGoogleToken(callback) {
         'https://www.googleapis.com/oauth2/v2/userinfo',
         { headers: { Authorization: 'Bearer ' + googleToken } }
       );
+      if (!profileRes.ok) {
+        alert('Failed to fetch Google profile. Please try again.');
+        return;
+      }
       const profile = await profileRes.json();
-      console.log('Profile fetched:', profile.email);
+      console.log('Profile fetched:', JSON.stringify(profile));
       console.log('Calling handleGoogleLogin...');
       await handleGoogleLogin({ email: profile.email });
       if (callback) callback();
