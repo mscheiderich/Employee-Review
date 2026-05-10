@@ -143,11 +143,21 @@ async function loadMyReviews() {
       return;
     }
     container.innerHTML = reviews.map((r, i) => `
-      <div class="review-card" onclick="toggleReview(${i})">
-        <h3>${r.type || 'Review'}</h3>
-        <p>${r.date || ''}</p>
-        <div class="review-text" id="review-${i}">
-          ${formatReviewText(r.text || 'No content available.')}
+      <div class="review-card">
+        <div style="display:flex;align-items:center;
+          justify-content:space-between;">
+          <div>
+            <h3>${r.type || 'Review'}</h3>
+            <p>${r.date || ''}</p>
+          </div>
+          ${r.docUrl ? `
+            <a href="${r.docUrl}" target="_blank"
+              style="background:#1a1a1a;color:#fff;
+              text-decoration:none;padding:8px 16px;
+              border-radius:8px;font-size:13px;
+              white-space:nowrap;">
+              View Review
+            </a>` : ''}
         </div>
       </div>
     `).join('');
@@ -158,11 +168,7 @@ async function loadMyReviews() {
   }
 }
 
-function toggleReview(i) {
-  const el = document.getElementById('review-' + i);
-  el.style.display =
-    el.style.display === 'block' ? 'none' : 'block';
-}
+
 </script>
 </body>
 </html>

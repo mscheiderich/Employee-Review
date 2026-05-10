@@ -27,6 +27,8 @@ module.exports = async function handler(req, res) {
     const typeIdx = cols.indexOf('Review Type');
     const dateIdx = cols.indexOf('Review Date');
     const textIdx = cols.indexOf('Review Text');
+    const docUrlIdx = cols.indexOf('Doc URL') !== -1
+      ? cols.indexOf('Doc URL') : 6;
 
     const myReviews = rows
       .filter(row => {
@@ -37,7 +39,8 @@ module.exports = async function handler(req, res) {
       .map(row => ({
         type: row.c[typeIdx] ? row.c[typeIdx].v : '',
         date: row.c[dateIdx] ? row.c[dateIdx].v : '',
-        text: row.c[textIdx] ? row.c[textIdx].v : ''
+        text: row.c[textIdx] ? row.c[textIdx].v : '',
+        docUrl: row.c[docUrlIdx] ? row.c[docUrlIdx].v : ''
       }))
       .reverse();
 
