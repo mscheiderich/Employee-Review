@@ -1061,14 +1061,14 @@ function loadGoogleAuth() {
 }
 
 function getGoogleToken(callback) {
-  if (googleToken) { callback(); return; }
+  if (googleToken) { if (callback) callback(); return; }
   if (typeof google === 'undefined') {
     setTimeout(() => getGoogleToken(callback), 300);
     return;
   }
   const client = google.accounts.oauth2.initTokenClient({
     client_id: CONFIG.googleClientId,
-    scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file',
+    scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents',
     callback: async (response) => {
       if (response.error) {
         alert('Google authorization failed: ' + response.error +
