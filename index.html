@@ -11,34 +11,12 @@
   <!-- LOGIN SCREEN -->
   <div id="login-screen">
     <div class="login-box">
-      <div class="login-logo">Scheiderich Agency</div>
-      <p class="login-sub">Employee Review System</p>
-      <div>
-        <label>Who are you?</label>
-        <select id="login-user">
-          <option value="">Select...</option>
-          <option value="Michael Scheiderich">Michael Scheiderich</option>
-          <option value="Crissy Shatzel">Crissy Shatzel</option>
-        </select>
-      </div>
-      <div style="margin-top:12px">
-        <label>Password</label>
-        <div style="position:relative">
-          <input type="password" id="login-pass" placeholder="Enter password"
-            style="width:100%;padding-right:40px" />
-          <button onclick="togglePassword()"
-            style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#888;font-size:13px"
-            id="toggle-pass-btn">Show</button>
-        </div>
-        <div style="margin-top:6px">
-          <label style="font-size:12px;color:#888;display:flex;align-items:center;gap:6px">
-            <input type="checkbox" id="remember-pass" />
-            Remember password
-          </label>
-        </div>
-      </div>
-      <button style="margin-top:16px" onclick="checkLogin()">Sign in</button>
-      <p id="login-error" class="error-msg" style="display:none">Incorrect password or user not selected.</p>
+      <h2>Employee Review System</h2>
+      <p>Sign in with your Google Workspace account</p>
+      <button class="primary-btn" onclick="getGoogleToken()">
+        Sign in with Google
+      </button>
+      <p id="login-error" style="color:red;display:none;margin-top:12px;"></p>
     </div>
   </div>
 
@@ -58,7 +36,7 @@
         <button class="tab" onclick="switchTab('incidents', this)">Incident Log</button>
         <button class="tab" onclick="switchTab('history', this)">Review History</button>
         <button class="tab" onclick="switchTab('rubric', this)">Rubric</button>
-        <button class="tab" onclick="switchTab('admin', this)">Admin</button>
+        <button class="tab" data-tab="admin" onclick="switchTab('admin', this)">Admin</button>
       </div>
 
       <!-- ===== REVIEW TAB ===== -->
@@ -270,6 +248,21 @@
 
       <!-- ===== ADMIN TAB ===== -->
       <div id="tab-admin" class="tab-content">
+        <div class="card">
+          <p class="sec-title">User Management</p>
+          <div id="users-list" style="margin-bottom:1rem;"></div>
+          <div class="row2" style="margin-bottom:8px;">
+            <input type="text" id="new-user-name" placeholder="Full name">
+            <input type="email" id="new-user-email" placeholder="Email address">
+          </div>
+          <div class="row2">
+            <select id="new-user-role">
+              <option value="reviewer">Reviewer</option>
+              <option value="admin">Admin</option>
+            </select>
+            <button class="primary-btn" onclick="addUser()">Add User</button>
+          </div>
+        </div>
         <div class="card">
           <p class="sec-title">Google Drive Destination</p>
           <label>Destination Folder ID</label>

@@ -3,7 +3,6 @@
 //  CONFIGURATION — update before deploying
 // ============================================================
 const CONFIG = {
-  password: 'SchAgency2025!',
   proxyUrl: '/api/generate-review',
   sheetId: '1M8LvVrgPCarObzGSWeicjpQSh43FvfSDm79wk1efOW4',
   incidentSheet: 'Incidents',
@@ -83,47 +82,44 @@ let rootFolderId    = null;
 // ============================================================
 //  Auth
 // ============================================================
-function togglePassword() {
-  const input = document.getElementById('login-pass');
-  const btn   = document.getElementById('toggle-pass-btn');
-  if (input.type === 'password') {
-    input.type   = 'text';
-    btn.textContent = 'Hide';
-  } else {
-    input.type   = 'password';
-    btn.textContent = 'Show';
-  }
+let currentUserRole = 'reviewer';
+
+async function loadApprovedUsers() {
+  const res = await fetch('/api/users');
+  return res.ok ? await res.json() : [];
 }
 
-function loadSavedPassword() {
-  const saved = localStorage.getItem('saved-password');
-  if (saved) {
-    document.getElementById('login-pass').value     = saved;
-    document.getElementById('remember-pass').checked = true;
+async function handleGoogleLogin(googleUser) {
+  const email = googleUser.email;
+  const users = await loadApprovedUsers();
+  const match = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+  if (!match) {
+    document.getElementById('login-error').textContent =
+      'Access denied. Your account is not approved.';
+    document.getElementById('login-error').style.display = 'block';
+    googleToken = null;
+    return;
   }
-}
-
-function checkLogin() {
-  const user     = document.getElementById('login-user').value;
-  const pass     = document.getElementById('login-pass').value;
-  const err      = document.getElementById('login-error');
-  const remember = document.getElementById('remember-pass').checked;
-
-  if (!user) { err.textContent = 'Please select who you are.'; err.style.display = 'block'; return; }
-  if (pass !== CONFIG.password) { err.textContent = 'Incorrect password.'; err.style.display = 'block'; return; }
-
-  if (remember) {
-    localStorage.setItem('saved-password', pass);
-  } else {
-    localStorage.removeItem('saved-password');
-  }
-
-  currentUser = user;
+  currentUser = match.name;
+  currentUserRole = match.role;
   sessionStorage.setItem('auth', '1');
-  sessionStorage.setItem('user', user);
+  sessionStorage.setItem('user', match.name);
+  sessionStorage.setItem('role', match.role);
+  sessionStorage.setItem('email', email);
   document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('app').style.display          = 'block';
+  document.getElementById('app').style.display = 'block';
+  applyRolePermissions();
   initApp();
+}
+
+function applyRolePermissions() {
+  const isAdmin = currentUserRole === 'admin';
+  const adminTab = document.querySelector('[data-tab="admin"]');
+  if (adminTab) adminTab.style.display = isAdmin ? '' : 'none';
+  if (!isAdmin) {
+    const adminContent = document.getElementById('admin');
+    if (adminContent) adminContent.style.display = 'none';
+  }
 }
 
 function logout() {
@@ -132,14 +128,13 @@ function logout() {
   location.reload();
 }
 
-document.getElementById('login-pass').addEventListener('keydown', e => {
-  if (e.key === 'Enter') checkLogin();
-});
-
 if (sessionStorage.getItem('auth') === '1') {
   currentUser = sessionStorage.getItem('user');
+  currentUserRole = sessionStorage.getItem('role') || 'reviewer';
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
+  applyRolePermissions();
+  initApp();
 }
 
 // ============================================================
@@ -155,6 +150,7 @@ async function initApp() {
   document.getElementById('reviewer').value          = currentUser;
   document.getElementById('inc-logger').value        = currentUser;
   loadDriveFolderSetting();
+  if (currentUserRole === 'admin') loadUsersList();
 }
 
 // ============================================================
@@ -1073,7 +1069,7 @@ function getGoogleToken(callback) {
   const client = google.accounts.oauth2.initTokenClient({
     client_id: CONFIG.googleClientId,
     scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file',
-    callback: (response) => {
+    callback: async (response) => {
       if (response.error) {
         alert('Google authorization failed: ' + response.error +
           '\n\nPlease make sure you are signing in with your ' +
@@ -1081,7 +1077,13 @@ function getGoogleToken(callback) {
         return;
       }
       googleToken = response.access_token;
-      callback();
+      const profileRes = await fetch(
+        'https://www.googleapis.com/oauth2/v2/userinfo',
+        { headers: { Authorization: 'Bearer ' + googleToken } }
+      );
+      const profile = await profileRes.json();
+      await handleGoogleLogin({ email: profile.email });
+      if (callback) callback();
     },
     error_callback: (error) => {
       if (error.type === 'popup_closed') {
@@ -1281,7 +1283,55 @@ function loadDriveFolderSetting() {
   if (saved && input) input.value = saved;
 }
 
-document.addEventListener('DOMContentLoaded', loadSavedPassword);
+async function loadUsersList() {
+  const users = await loadApprovedUsers();
+  const container = document.getElementById('users-list');
+  if (!container) return;
+  container.innerHTML = users.map(u => `
+    <div style="display:flex;align-items:center;justify-content:space-between;
+    padding:8px 0;border-bottom:1px solid #eee;">
+      <div>
+        <strong>${u.name}</strong>
+        <span style="color:#888;font-size:12px;">${u.email}</span>
+        <span class="pill ${u.role === 'admin' ? 'p4' : 'p2'}"
+          style="margin-left:8px;">${u.role}</span>
+      </div>
+      <button onclick="removeUser('${u.email}')"
+        style="background:none;border:1px solid #ddd;border-radius:6px;
+        padding:4px 10px;cursor:pointer;color:#991b1b;">Remove</button>
+    </div>
+  `).join('');
+}
+
+async function addUser() {
+  const name = document.getElementById('new-user-name').value.trim();
+  const email = document.getElementById('new-user-email').value.trim();
+  const role = document.getElementById('new-user-role').value;
+  if (!name || !email) { alert('Please fill in name and email.'); return; }
+  const res = await fetch('/api/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'add', name, email, role })
+  });
+  if (res.ok) {
+    document.getElementById('new-user-name').value = '';
+    document.getElementById('new-user-email').value = '';
+    await loadUsersList();
+  } else {
+    const err = await res.json();
+    alert(err.error || 'Failed to add user.');
+  }
+}
+
+async function removeUser(email) {
+  if (!confirm(`Remove ${email}?`)) return;
+  const res = await fetch('/api/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'remove', email })
+  });
+  if (res.ok) await loadUsersList();
+}
 
 
 
