@@ -110,14 +110,6 @@ if (sessionStorage.getItem('auth') !== 'employee' || !empName) {
 
 document.getElementById('portal-username').textContent = empName;
 
-const CONFIG = {
-  sheetId: '1M8LvVrgPCarObzGSWeicjpQSh43FvfSDm79wk1efOW4',
-  reviewSheet: 'Reviews',
-  googleClientId: '152603955396-3pau8atgci9o9icccmfbirblu0pcjesc.apps.googleusercontent.com'
-};
-
-let googleToken = null;
-
 function portalLogout() {
   sessionStorage.clear();
   window.location.href = '/';
@@ -126,68 +118,36 @@ function portalLogout() {
 function formatReviewText(text) {
   if (!text) return '';
   return text
-    .replace(/^## (.+)$/gm, '<h3 style="margin:16px 0 8px;">$1</h3>')
+    .replace(/^## (.+)$/gm,
+      '<h3 style="margin:16px 0 8px;">$1</h3>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/^- (.+)$/gm, '<li style="margin:4px 0;">$1</li>')
-    .replace(/(<li[^>]*>.*<\/li>)/gs, '<ul style="margin:8px 0 8px 20px;">$1</ul>')
+    .replace(/^- (.+)$/gm,
+      '<li style="margin:4px 0;">$1</li>')
+    .replace(/(<li[^>]*>.*?<\/li>\n?)+/gs,
+      '<ul style="margin:8px 0 8px 20px;">$&</ul>')
     .replace(/\n\n/g, '<br>');
-}
-
-async function getPortalToken() {
-  return new Promise((resolve) => {
-    if (googleToken) { resolve(); return; }
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.onload = () => {
-      const client = google.accounts.oauth2.initTokenClient({
-        client_id: CONFIG.googleClientId,
-        scope: 'https://www.googleapis.com/auth/spreadsheets.readonly',
-        callback: (response) => {
-          googleToken = response.access_token;
-          resolve();
-        }
-      });
-      client.requestAccessToken({ prompt: '' });
-    };
-    document.head.appendChild(script);
-  });
 }
 
 async function loadMyReviews() {
   const container = document.getElementById('reviews-container');
+  container.innerHTML =
+    '<p style="text-align:center;color:#888;padding:40px;">Loading...</p>';
   try {
-    await getPortalToken();
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.sheetId}/values/${CONFIG.reviewSheet}`;
-    const res = await fetch(url, {
-      headers: { Authorization: 'Bearer ' + googleToken }
-    });
-    const data = await res.json();
-    const rows = data.values || [];
-    if (rows.length < 2) {
-      container.innerHTML = '<div class="empty-state"><p>No reviews found yet.</p></div>';
+    const res = await fetch(
+      `/api/reviews?name=${encodeURIComponent(empReviewName)}`
+    );
+    const reviews = await res.json();
+    if (!Array.isArray(reviews) || reviews.length === 0) {
+      container.innerHTML =
+        '<div class="empty-state"><p>No reviews found yet.</p></div>';
       return;
     }
-    const headers = rows[0];
-    const myReviews = rows.slice(1).filter(row => {
-      const empCol = headers.indexOf('Employee');
-      return empCol >= 0 &&
-        row[empCol] &&
-        row[empCol].toLowerCase() === empReviewName.toLowerCase();
-    });
-    if (myReviews.length === 0) {
-      container.innerHTML = '<div class="empty-state"><p>No reviews found for your account.</p></div>';
-      return;
-    }
-    const empCol = headers.indexOf('Employee');
-    const typeCol = headers.indexOf('Review Type');
-    const dateCol = headers.indexOf('Review Date');
-    const textCol = headers.indexOf('Review Text');
-    container.innerHTML = myReviews.reverse().map((row, i) => `
+    container.innerHTML = reviews.map((r, i) => `
       <div class="review-card" onclick="toggleReview(${i})">
-        <h3>${row[typeCol] || 'Review'}</h3>
-        <p>${row[dateCol] || ''}</p>
+        <h3>${r.type || 'Review'}</h3>
+        <p>${r.date || ''}</p>
         <div class="review-text" id="review-${i}">
-          ${formatReviewText(row[textCol] || 'No content available.')}
+          ${formatReviewText(r.text || 'No content available.')}
         </div>
       </div>
     `).join('');
@@ -200,11 +160,9 @@ async function loadMyReviews() {
 
 function toggleReview(i) {
   const el = document.getElementById('review-' + i);
-  el.style.display = el.style.display === 'none' ||
-    !el.style.display ? 'block' : 'none';
+  el.style.display =
+    el.style.display === 'block' ? 'none' : 'block';
 }
-
-
 </script>
 </body>
 </html>
