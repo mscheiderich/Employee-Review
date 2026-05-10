@@ -90,6 +90,7 @@ async function loadApprovedUsers() {
 }
 
 async function handleGoogleLogin(googleUser) {
+  console.log('handleGoogleLogin called with:', googleUser.email);
   const email = googleUser.email;
   const users = await loadApprovedUsers();
   const match = users.find(u => u.email.toLowerCase() === email.toLowerCase());
@@ -100,12 +101,14 @@ async function handleGoogleLogin(googleUser) {
     googleToken = null;
     return;
   }
+  console.log('User matched:', match);
   currentUser = match.name;
   currentUserRole = match.role;
   sessionStorage.setItem('auth', '1');
   sessionStorage.setItem('user', match.name);
   sessionStorage.setItem('role', match.role);
   sessionStorage.setItem('email', email);
+  console.log('Session set, showing app...');
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   applyRolePermissions();
@@ -1074,6 +1077,8 @@ function getGoogleToken(callback) {
         { headers: { Authorization: 'Bearer ' + googleToken } }
       );
       const profile = await profileRes.json();
+      console.log('Profile fetched:', profile.email);
+      console.log('Calling handleGoogleLogin...');
       await handleGoogleLogin({ email: profile.email });
       if (callback) callback();
     },
@@ -1085,7 +1090,7 @@ function getGoogleToken(callback) {
       }
     },
   });
-  client.requestAccessToken({ prompt: 'consent' });
+  client.requestAccessToken({ prompt: '' });
 }
 
 // ============================================================
