@@ -16,7 +16,7 @@ const CONFIG = {
 // ============================================================
 const DEFAULT_EMPLOYEES = [
   'Chris Wolter',
-  'Craig Diago',
+  'Craig Diego',
   'Crissy Shatzel',
   'Iris Salgado',
   'Mark Hill',
