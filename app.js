@@ -159,7 +159,7 @@ if (sessionStorage.getItem('auth') === '1') {
 //  Init
 // ============================================================
 async function initApp() {
-  loadEmployees();
+  await loadEmployees();
   buildRatingGroups();
   setDefaultDates();
 
@@ -167,23 +167,32 @@ async function initApp() {
   document.getElementById('header-user').textContent = currentUser;
   document.getElementById('reviewer').value          = currentUser;
   document.getElementById('inc-logger').value        = currentUser;
-  loadDriveFolderSetting();
+  await loadDriveFolderSetting();
   if (currentUserRole === 'admin') { loadUsersList(); loadEmployeesList(); }
 }
 
 // ============================================================
 //  Employee management
 // ============================================================
-function loadEmployees() {
-  const stored = localStorage.getItem('scheiderich-employees');
-  employees = stored ? JSON.parse(stored) : [...DEFAULT_EMPLOYEES];
+async function loadEmployees() {
+  try {
+    const res = await fetch('/api/get-settings?key=employee-list');
+    const data = await res.json();
+    employees = data.value ? JSON.parse(data.value) : [...DEFAULT_EMPLOYEES];
+  } catch {
+    employees = [...DEFAULT_EMPLOYEES];
+  }
   populateEmployeeDropdowns();
   renderAdminEmployeeList();
   buildFilterBars();
 }
 
 function saveEmployees() {
-  localStorage.setItem('scheiderich-employees', JSON.stringify(employees));
+  fetch('/api/save-settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key: 'employee-list', value: JSON.stringify(employees) }),
+  });
 }
 
 function addReviewEmployee() {
@@ -952,7 +961,6 @@ function pushWordBlankParagraph(children, Paragraph) {
 //  Save review to Records + Drive
 // ============================================================
 async function saveReview() {
-  console.log('Drive folder ID from storage:', localStorage.getItem('drive-folder-id'));
   if (!lastReviewText) { alert('No review to save. Generate a review first.'); return; }
 
   const saveBtn = document.querySelector('.output-toolbar .copy-btn:last-child');
@@ -968,10 +976,11 @@ async function saveReview() {
 
       // 2. Get or create root Drive folder
       if (!rootFolderId) {
-        const savedFolderId = localStorage.getItem('drive-folder-id');
-        if (savedFolderId) {
-          rootFolderId = savedFolderId;
-        } else {
+        try {
+          const folderRes = await fetch('/api/get-settings?key=drive-folder-id');
+          const folderData = await folderRes.json();
+          rootFolderId = folderData.value || await getOrCreateFolder(CONFIG.driveFolderName, 'root');
+        } catch {
           rootFolderId = await getOrCreateFolder(CONFIG.driveFolderName, 'root');
         }
       }
@@ -1135,31 +1144,33 @@ async function addIncident() {
   successMsg.style.display = 'none';
   errorMsg.style.display   = 'none';
 
-  getGoogleToken(async () => {
-    const row = [new Date().toISOString(), emp, date || new Date().toISOString().split('T')[0], type, desc, action, logger];
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.sheetId}/values/${CONFIG.incidentSheet}!A:G:append?valueInputOption=USER_ENTERED`;
+  try {
+    const res = await fetch('/api/save-incident', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        employee: emp,
+        date: date,
+        type: type,
+        description: desc,
+        actionTaken: action,
+        loggedBy: logger,
+      }),
+    });
+    if (!res.ok) throw new Error('Save failed: ' + res.status);
 
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + googleToken, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ values: [row] }),
-      });
-      if (!res.ok) throw new Error('Records API error ' + res.status);
+    document.getElementById('inc-emp').value    = '';
+    document.getElementById('inc-desc').value   = '';
+    document.getElementById('inc-action').value = '';
+    setDefaultDates();
 
-      document.getElementById('inc-emp').value    = '';
-      document.getElementById('inc-desc').value   = '';
-      document.getElementById('inc-action').value = '';
-      setDefaultDates();
-
-      successMsg.style.display = 'block';
-      setTimeout(() => { successMsg.style.display = 'none'; }, 3000);
-      loadIncidents();
-    } catch (err) {
-      errorMsg.textContent   = 'Error saving: ' + err.message;
-      errorMsg.style.display = 'block';
-    }
-  });
+    successMsg.style.display = 'block';
+    setTimeout(() => { successMsg.style.display = 'none'; }, 3000);
+    loadIncidents();
+  } catch (err) {
+    errorMsg.textContent   = 'Error saving: ' + err.message;
+    errorMsg.style.display = 'block';
+  }
 }
 
 async function loadIncidents() {
@@ -1168,21 +1179,21 @@ async function loadIncidents() {
   loadingEl.style.display = 'block';
   listEl.innerHTML = '';
 
-  getGoogleToken(async () => {
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.sheetId}/values/${CONFIG.incidentSheet}!A:G`;
-    try {
-      const res  = await fetch(url, { headers: { 'Authorization': 'Bearer ' + googleToken } });
-      const data = await res.json();
-      const rows = (data.values || []).slice(1);
-      allIncidents = rows.map(r => ({
-        timestamp: r[0] || '', emp: r[1] || '', date: r[2] || '',
-        type: r[3] || '', desc: r[4] || '', action: r[5] || '', logger: r[6] || '',
-      })).reverse();
-    } catch { allIncidents = []; }
+  try {
+    const res  = await fetch('/api/get-incidents');
+    const data = await res.json();
+    allIncidents = (data.incidents || []).map(i => ({
+      emp:    i.employee    || '',
+      date:   i.date        || '',
+      type:   i.type        || '',
+      desc:   i.description || '',
+      action: i.actionTaken || '',
+      logger: i.loggedBy    || '',
+    }));
+  } catch { allIncidents = []; }
 
-    loadingEl.style.display = 'none';
-    renderIncidents();
-  });
+  loadingEl.style.display = 'none';
+  renderIncidents();
 }
 
 function filterInc(filter, btn) {
@@ -1288,19 +1299,25 @@ function toggleReviewText(i) {
 }
 
 
-function saveDriveFolderSetting() {
+async function saveDriveFolderSetting() {
   const input = document.getElementById('drive-folder-input');
   const val = input ? input.value.trim() : '';
   if (!val) { alert('Please paste a folder ID first.'); return; }
-  localStorage.removeItem(val);
-  localStorage.setItem('drive-folder-id', val);
+  await fetch('/api/save-settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key: 'drive-folder-id', value: val }),
+  });
   alert('Drive folder saved: ' + val);
 }
 
-function loadDriveFolderSetting() {
-  const saved = localStorage.getItem('drive-folder-id');
-  const input = document.getElementById('drive-folder-input');
-  if (saved && input) input.value = saved;
+async function loadDriveFolderSetting() {
+  try {
+    const res = await fetch('/api/get-settings?key=drive-folder-id');
+    const data = await res.json();
+    const input = document.getElementById('drive-folder-input');
+    if (data.value && input) input.value = data.value;
+  } catch { /* silent */ }
 }
 
 async function loadUsersList() {

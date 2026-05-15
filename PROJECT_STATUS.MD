@@ -30,14 +30,21 @@ Headers (Row 1): Timestamp | Employee | Review Type | Review Date | Reviewer | R
 - Per-employee subfolders in Drive auto-created
 - Employee portal with "View Review" button linking to Google Doc
 - Vercel auto-deploy from GitHub push
+- localStorage migrated to Vercel KV (employee list + Drive folder ID stored company-wide in KV)
+- Incident save fixed — no longer calls Google Sheets API (was failing with 403); now posts to /api/save-incident → Vercel KV
+- Employee portal incident lockout confirmed — employee.html has zero incident references
 
-## Last Known Bug (May 10, 2026)
-Craig Diago's employee portal showed "No reviews found."
-Root cause: name mismatch between Admin employee list and Sheets column B.
-Status: UNRESOLVED — verify exact spelling in Sheets column B vs employee portal login name.
+## Incident Storage Note (May 15, 2026)
+All new incidents are saved to Vercel KV via /api/save-incident and /api/get-incidents.
+Any rows previously written to the Google Sheets "Incidents" tab are historical records only
+and are no longer read or written by the app.
+
+## Last Known Bug (May 10, 2026) — RESOLVED May 15, 2026
+Craig Diego name mismatch: corrected spelling in app.js DEFAULT_EMPLOYEES list (was "Craig Diago").
+Remaining action: manually correct any existing "Craig Diago" rows in Google Sheets column B to "Craig Diego".
 
 ## Next Priority Tasks (in order)
-1. RESOLVE: Craig Diago name mismatch — confirm review shows in portal
+1. FIX: Manually update "Craig Diago" → "Craig Diego" in Google Sheets Reviews tab column B
 2. REMOVE: Old Sheets-based setup UI from Admin tab (no longer needed)
 3. BUILD: Individual user logins — each employee gets their own credentials
 4. BUILD: Admin panel to add/manage users and assign admin-level access
