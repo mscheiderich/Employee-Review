@@ -1,51 +1,14 @@
-const KV_URL = process.env.KV_REST_API_URL;
-const KV_TOKEN = process.env.KV_REST_API_TOKEN;
+const { kv } = require('@vercel/kv');
 
-async function kvGet(key) {
-  const res = await fetch(`${KV_URL}/get/${key}`, {
-    headers: { Authorization: `Bearer ${KV_TOKEN}` }
-  });
-  const data = await res.json();
-  if (!data.result) return null;
+function asArray(raw) {
+  let v = raw;
   try {
-    const parsed = JSON.parse(data.result);
-    if (typeof parsed === 'string') return JSON.parse(parsed);
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-async function kvGetEmployees() {
-  const res = await fetch(`${KV_URL}/get/employees`, {
-    headers: { Authorization: `Bearer ${KV_TOKEN}` }
-  });
-  const data = await res.json();
-  if (!data.result) return [];
-  try {
-    let parsed = JSON.parse(data.result);
-    if (typeof parsed === 'string') parsed = JSON.parse(parsed);
-    if (parsed && parsed.value) {
-      parsed = typeof parsed.value === 'string'
-        ? JSON.parse(parsed.value)
-        : parsed.value;
+    if (typeof v === 'string') v = JSON.parse(v);
+    if (v && typeof v === 'object' && 'value' in v) {
+      v = typeof v.value === 'string' ? JSON.parse(v.value) : v.value;
     }
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-async function kvSet(key, value) {
-  const res = await fetch(`${KV_URL}/set/${key}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${KV_TOKEN}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ value: JSON.stringify(value) })
-  });
-  return res.ok;
+  } catch { return []; }
+  return Array.isArray(v) ? v : [];
 }
 
 const DEFAULT_USERS = [
@@ -57,15 +20,15 @@ module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
 
   if (req.method === 'GET' && req.query && req.query.type === 'employees') {
-    const employees = await kvGetEmployees();
+    const employees = asArray(await kv.get('employees'));
     return res.status(200).end(JSON.stringify(employees));
   }
 
   if (req.method === 'GET') {
-    let users = await kvGet('users');
-    if (!users) {
+    let users = asArray(await kv.get('users'));
+    if (users.length === 0) {
       users = DEFAULT_USERS;
-      await kvSet('users', users);
+      await kv.set('users', users);
     }
     return res.status(200).end(JSON.stringify(users));
   }
@@ -78,39 +41,40 @@ module.exports = async function handler(req, res) {
       if (!username || !name || !body.password || !reviewName) {
         return res.status(400).end(JSON.stringify({ error: 'Missing fields' }));
       }
-      const employees = await kvGetEmployees();
+      const employees = asArray(await kv.get('employees'));
       if (employees.find(e => e.username === username)) {
         return res.status(400).end(JSON.stringify({ error: 'Username already exists' }));
       }
       employees.push({ username, name, password: body.password, reviewName, role: 'employee' });
-      await kvSet('employees', employees);
+      await kv.set('employees', employees);
       return res.status(200).end(JSON.stringify(employees));
     }
 
     if (action === 'remove-employee') {
-      let employees = await kvGetEmployees();
+      let employees = asArray(await kv.get('employees'));
       employees = employees.filter(e => e.username !== username);
-      await kvSet('employees', employees);
+      await kv.set('employees', employees);
       return res.status(200).end(JSON.stringify(employees));
     }
 
     if (action === 'reset-password') {
-      let employees = await kvGetEmployees();
+      let employees = asArray(await kv.get('employees'));
       const idx = employees.findIndex(e => e.username === username);
       if (idx === -1) {
         return res.status(404).end(JSON.stringify({ error: 'Employee not found' }));
       }
       employees[idx].password = body.password;
-      await kvSet('employees', employees);
+      await kv.set('employees', employees);
       return res.status(200).end(JSON.stringify(employees));
     }
 
     if (action === 'list-employees') {
-      const employees = await kvGetEmployees();
+      const employees = asArray(await kv.get('employees'));
       return res.status(200).end(JSON.stringify(employees));
     }
 
-    let users = await kvGet('users') || DEFAULT_USERS;
+    let users = asArray(await kv.get('users'));
+    if (users.length === 0) users = DEFAULT_USERS;
 
     if (action === 'add') {
       if (!email || !name || !role) {
@@ -120,13 +84,13 @@ module.exports = async function handler(req, res) {
         return res.status(400).end(JSON.stringify({ error: 'User already exists' }));
       }
       users.push({ email, name, role });
-      await kvSet('users', users);
+      await kv.set('users', users);
       return res.status(200).end(JSON.stringify(users));
     }
 
     if (action === 'remove') {
       users = users.filter(u => u.email !== email);
-      await kvSet('users', users);
+      await kv.set('users', users);
       return res.status(200).end(JSON.stringify(users));
     }
 

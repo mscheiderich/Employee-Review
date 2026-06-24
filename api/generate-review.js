@@ -1,5 +1,5 @@
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
-const MODEL = 'claude-sonnet-4-6';
+const MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
 const ANTHROPIC_VERSION = '2023-06-01';
 
 function sendJson(res, statusCode, body) {
