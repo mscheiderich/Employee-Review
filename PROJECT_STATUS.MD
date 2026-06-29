@@ -23,8 +23,10 @@ Backup Vercel URL: employee-review-git-main-mike-2004s-projects.vercel.app
 - Storage:
   - Google Drive — formatted review Google Docs, in a SHARED DRIVE,
     organized into per-employee subfolders
-  - Google Sheets — review records (read via public gviz endpoint)
-  - Vercel KV — incidents, employee list, users, settings (all cloud)
+  - Vercel KV — reviews (source of truth), incidents, employee list,
+    users, settings (all cloud)
+  - Google Sheets — RETIRED from the review pipeline (no longer read or
+    written). Historical rows remain in the sheet but are unused.
 - Auth: Google OAuth (managers); username/password in Vercel KV (employees)
 - Frontend: Vanilla JS (app.js), index.html, employee.html
 
@@ -37,10 +39,28 @@ Workflow: edit in Claude Code → commit + Sync in VS Code → Vercel auto-deplo
 - index.html — manager-facing review app
 - employee.html — employee portal (own reviews only, no incident access)
 - api/generate-review.js — calls Anthropic API (model from CLAUDE_MODEL env var)
-- api/save-review.js — SERVER-SIDE review save: creates Doc in Shared Drive,
-  per-employee subfolder, appends Sheets row, applies formatting. Uses
-  Google refresh-token flow so it works for ANY user, not just the owner.
-- api/reviews.js — reads review records from Google Sheets
+- Reviews are KV-backed records: keys `review:{timestamp}` + a `reviews:index`
+  array of keys. Each record has a `status` field: 'draft' or 'final'. KV is
+  the SOURCE OF TRUTH for reviews. Record fields use reviewType/reviewDate
+  (NOT type/date) consistently across save, finalize, list, and portal read.
+- api/reviews-save.js — DRAFT upsert in KV (creates or updates a record).
+  Admin-gated.
+- api/reviews-finalize.js — finalize a review: creates the Google Doc on the
+  FIRST finalize; on re-finalize it updates the SAME Doc in place (clears the
+  body, re-applies formatting) so the employee-facing link never changes.
+  Sets status='final', docId, docUrl. Admin-gated. Uses Google refresh-token
+  flow so it works for ANY admin. (Supersedes save-review.js.)
+- api/reviews-list.js — admin review history; returns all records (drafts +
+  finals) newest-first. Admin-gated.
+- lib/require-admin.js — verifies the caller's Google Bearer token against
+  https://www.googleapis.com/oauth2/v3/userinfo and checks the email against
+  the ADMIN_EMAILS env var. Sends 401 (bad/missing token) or 403 (not an
+  admin) and returns null; otherwise returns the admin email.
+- api/reviews.js — employee portal read: returns FINALIZED records from KV
+  for ?name= (case-insensitive). Reads KV, NOT Google Sheets gviz.
+- api/save-review.js — DEAD CODE. Superseded by reviews-finalize.js (it still
+  writes a Sheets row + uses the old flow). Flagged for removal in a future
+  cleanup; left in place for now.
 - api/save-incident.js / api/get-incidents.js — incidents in Vercel KV
 - api/save-settings.js / api/get-settings.js — employee list + settings in KV
 - api/users.js — user + employee-account management (uses @vercel/kv with
@@ -51,6 +71,9 @@ Workflow: edit in Claude Code → commit + Sync in VS Code → Vercel auto-deplo
 ## Vercel Environment Variables (reference)
 - ANTHROPIC_API_KEY (secret)
 - CLAUDE_MODEL = claude-sonnet-4-6
+- ADMIN_EMAILS (REQUIRED, NEW) = comma-separated admin Google emails (e.g.
+  mike@…,crissy@…). The review save/finalize/list routes are admin-gated and
+  return 403 for everyone until this is set. Env-var change → manual Redeploy.
 - GOOGLE_CLIENT_ID
 - GOOGLE_CLIENT_SECRET (secret)
 - GOOGLE_REFRESH_TOKEN (secret — minted from Mike's account via OAuth Playground)
@@ -63,9 +86,10 @@ NOTE: env-var changes require a manual Redeploy in Vercel to take effect.
   Crissy = member). This is where all new reviews are saved.
 - Admin "Destination Folder ID" setting (in KV) = 0AG9CsfO4D8LuUk9PVA
 - Sheet ID: 1M8LvVrgPCarObzGSWeicjpQSh43FvfSDm79wk1efOW4
-  Reviews tab headers (row 1): Timestamp | Employee | Review Type |
-  Review Date | Reviewer | Review Text | Doc URL
-  Incidents tab: HISTORICAL only — new incidents save to Vercel KV
+  RETIRED from the review pipeline — no longer read or written. Reviews now
+  live in Vercel KV. Reviews tab (Timestamp | Employee | Review Type | Review
+  Date | Reviewer | Review Text | Doc URL) and Incidents tab are HISTORICAL
+  only; nothing new is written to either.
 - Google Cloud OAuth client: "Vercel Employee Review" (Web application).
   Authorized origins include app.thescheiderichagency.com.
   Authorized redirect URIs include developers.google.com/oauthplayground.
@@ -80,8 +104,11 @@ NOTE: env-var changes require a manual Redeploy in Vercel to take effect.
 
 ## Completed Features
 - AI review generation
-- Server-side review save (Doc + Shared Drive subfolder + Sheets row + format)
-  — works for ALL users (Mike, Crissy, anyone added)
+- KV-backed review records with a draft/final lifecycle: save drafts, edit
+  text inline, re-load saved reviews, then finalize. Finalize creates the
+  Google Doc once and updates that SAME Doc in place on re-finalize, so the
+  employee link is stable. Admin-gated via ADMIN_EMAILS. (Google Sheets
+  retired from the pipeline; save-review.js is now dead code.)
 - Word doc local download
 - Employee portal with "View Review" links; incidents fully hidden
 - Individual logins (managers via Google, employees via password)
@@ -96,10 +123,16 @@ NOTE: env-var changes require a manual Redeploy in Vercel to take effect.
 1. Employee portal passwords stored as PLAINTEXT in Vercel KV. Must be hashed.
 2. No admin-permission gate on /api/users — anyone who reaches the endpoint
    can add/remove users or reset passwords. Add a caller-role check.
+3. api/reviews.js (employee portal read) has NO employee auth — anyone who
+   passes ?name=<employee> gets that employee's finalized reviews. The portal
+   relies on session state only; the endpoint itself is open. Defer the fix to
+   the auth phase (per-employee identity / token check).
 These are the "structure users properly" phase. Do them carefully as a
 designed rebuild, NOT a quick patch.
 
 ## Minor Cleanup (low priority)
+- api/save-review.js is dead code (superseded by reviews-finalize.js). Remove
+  in a future cleanup once the new flow is confirmed stable in production.
 - app.js still contains the now-unused client-side getOrCreateFolder()
   function and the OLD Shared Drive ID 0ALICr0fW_IE7Uk9PVA (dead code,
   harmless). Remove when convenient.
