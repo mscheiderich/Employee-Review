@@ -77,6 +77,8 @@ let lastReviewText  = '';
 let lastReviewEmp   = '';
 let lastReviewType  = '';
 let lastReviewDate  = '';
+let currentReviewId = null;
+let reviewEditMode  = false;
 let rootFolderId    = null;
 
 // ============================================================
@@ -684,6 +686,7 @@ function loadDocxLibrary() {
 //  Generate review
 // ============================================================
 async function generateReview() {
+  currentReviewId = null; // a fresh generation is a new review, not an edit of an open draft
   const emp = getEmpName();
   if (!emp) { alert('Please select an employee first.'); return; }
 
@@ -958,52 +961,136 @@ function pushWordBlankParagraph(children, Paragraph) {
 }
 
 // ============================================================
-//  Save review to Records + Drive
+//  Inline review editing
+// ============================================================
+// Pull the textarea value back into lastReviewText, re-render, and leave
+// edit mode. Safe to call when not editing (no-op). Shared by the "Done"
+// toggle and by both save paths so unsaved edits are never lost.
+function flushReviewEdit() {
+  if (!reviewEditMode) return;
+  const ta = document.getElementById('review-edit-textarea');
+  if (ta) lastReviewText = ta.value;
+  document.getElementById('review-text').innerHTML = formatReviewText(lastReviewText);
+  reviewEditMode = false;
+  const editBtn = document.querySelector('.output-toolbar .copy-btn');
+  if (editBtn) editBtn.textContent = 'Edit Text';
+}
+
+function toggleEditReview() {
+  if (!lastReviewText && !reviewEditMode) { alert('No review to edit. Generate a review first.'); return; }
+  const textEl  = document.getElementById('review-text');
+  const editBtn = document.querySelector('.output-toolbar .copy-btn'); // first toolbar btn = Edit Text
+
+  if (reviewEditMode) {
+    // Leaving edit mode: commit the textarea back into the source of truth.
+    flushReviewEdit();
+    return;
+  }
+
+  // Entering edit mode: swap rendered HTML for a textarea seeded with RAW text.
+  reviewEditMode = true;
+  textEl.innerHTML =
+    `<textarea id="review-edit-textarea" style="width:100%;height:400px;box-sizing:border-box;` +
+    `font:14px/1.6 inherit;padding:12px;border:1px solid #ddd;border-radius:8px;">` +
+    `${escapeHtml(lastReviewText)}</textarea>`;
+  if (editBtn) editBtn.textContent = 'Done';
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+// ============================================================
+//  Save review — DRAFT (KV only, no Doc)
+// ============================================================
+async function saveDraft() {
+  flushReviewEdit(); // capture any in-progress textarea edits
+  if (!lastReviewText) { alert('No review to save. Generate a review first.'); return; }
+
+  const draftBtn = document.querySelector('.output-toolbar .copy-btn:nth-child(3)'); // Save Draft
+  const origLabel = draftBtn ? draftBtn.textContent : 'Save Draft';
+  if (draftBtn) { draftBtn.textContent = 'Saving...'; draftBtn.disabled = true; }
+
+  getGoogleToken(async () => {
+    try {
+      const res = await fetch('/api/reviews-save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + googleToken },
+        body: JSON.stringify({
+          id: currentReviewId,
+          employee: lastReviewEmp,
+          reviewType: document.getElementById('rev-type').value,
+          reviewDate: document.getElementById('rev-date').value,
+          reviewer: document.getElementById('reviewer').value,
+          reviewText: lastReviewText,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data || !data.success) {
+        throw new Error((data && data.error) || 'Draft save failed.');
+      }
+      currentReviewId = data.id;
+      alert('Draft saved');
+    } catch (err) {
+      alert('Error saving draft: ' + err.message);
+    } finally {
+      if (draftBtn) { draftBtn.textContent = origLabel; draftBtn.disabled = false; }
+    }
+  });
+}
+
+// ============================================================
+//  Save review — FINALIZE (creates/updates the Google Doc)
 // ============================================================
 async function saveReview() {
+  flushReviewEdit(); // capture any in-progress textarea edits
   if (!lastReviewText) { alert('No review to save. Generate a review first.'); return; }
 
   const saveBtn = document.querySelector('.output-toolbar .copy-btn:last-child');
   saveBtn.textContent = 'Saving...';
   saveBtn.disabled    = true;
 
-  try {
-    // 1. Collect form values
-    const date     = document.getElementById('rev-date').value;
-    const type     = document.getElementById('rev-type').value;
-    const reviewer = document.getElementById('reviewer').value;
+  const date     = document.getElementById('rev-date').value;
+  const type     = document.getElementById('rev-type').value;
+  const reviewer = document.getElementById('reviewer').value;
 
-    // 2. Build the Google Docs formatting requests (unchanged helpers)
-    const requests = buildGoogleDocsRequests(formatReviewForGoogleDocs(lastReviewText, { employee: lastReviewEmp, reviewType: type, reviewDate: date, reviewer }));
+  // Build the Google Docs formatting requests (unchanged helpers)
+  const requests = buildGoogleDocsRequests(formatReviewForGoogleDocs(lastReviewText, { employee: lastReviewEmp, reviewType: type, reviewDate: date, reviewer }));
 
-    // 3. Hand everything to the server, which saves it via the shared refresh token
-    const res = await fetch('/api/save-review', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        employee: lastReviewEmp,
-        type,
-        date,
-        reviewer,
-        reviewText: lastReviewText,
-        sheetId: CONFIG.sheetId,
-        sheetTab: CONFIG.reviewSheet,
-        requests,
-      }),
-    });
-    const data = await res.json().catch(() => null);
-    if (!res.ok || !data || !data.success) {
-      throw new Error((data && data.error) || 'Save failed.');
+  getGoogleToken(async () => {
+    try {
+      const res = await fetch('/api/reviews-finalize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + googleToken },
+        body: JSON.stringify({
+          id: currentReviewId,
+          employee: lastReviewEmp,
+          reviewType: type,
+          reviewDate: date,
+          reviewer,
+          reviewText: lastReviewText,
+          requests,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data || !data.success) {
+        throw new Error((data && data.error) || 'Save failed.');
+      }
+
+      currentReviewId = data.id;
+      saveBtn.textContent = 'Saved!';
+      alert('Review finalized and saved.\n\n' + (data.docUrl || ''));
+      setTimeout(() => { saveBtn.textContent = 'Finalize & Save'; saveBtn.disabled = false; }, 2000);
+
+    } catch (err) {
+      alert('Error saving: ' + err.message);
+      saveBtn.textContent = 'Finalize & Save';
+      saveBtn.disabled    = false;
     }
-
-    saveBtn.textContent = 'Saved!';
-    setTimeout(() => { saveBtn.textContent = 'Save to Drive & Records'; saveBtn.disabled = false; }, 2000);
-
-  } catch (err) {
-    alert('Error saving: ' + err.message);
-    saveBtn.textContent = 'Save to Drive & Records';
-    saveBtn.disabled    = false;
-  }
+  });
 }
 
 async function getOrCreateFolder(name, parentId) {
@@ -1200,15 +1287,10 @@ async function loadReviews() {
   listEl.innerHTML = '';
 
   getGoogleToken(async () => {
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.sheetId}/values/${CONFIG.reviewSheet}!A:F`;
     try {
-      const res  = await fetch(url, { headers: { 'Authorization': 'Bearer ' + googleToken } });
+      const res  = await fetch('/api/reviews-list', { headers: { 'Authorization': 'Bearer ' + googleToken } });
       const data = await res.json();
-      const rows = (data.values || []).slice(1);
-      allReviews = rows.map(r => ({
-        timestamp: r[0] || '', emp: r[1] || '', type: r[2] || '',
-        date: r[3] || '', reviewer: r[4] || '', text: r[5] || '',
-      })).reverse();
+      allReviews = (data && data.reviews) || []; // already newest-first from the server
     } catch { allReviews = []; }
 
     loadingEl.style.display = 'none';
@@ -1227,24 +1309,74 @@ function renderReviews() {
   const listEl   = document.getElementById('history-list');
   const filtered = historyFilter === 'All'
     ? allReviews
-    : allReviews.filter(r => r.emp === historyFilter);
+    : allReviews.filter(r => r.employee === historyFilter);
 
   if (!filtered.length) {
-    listEl.innerHTML = '<div class="empty-state">No reviews saved yet. Generate a review and click "Save to Drive & Records".</div>';
+    listEl.innerHTML = '<div class="empty-state">No reviews saved yet. Generate a review and click "Save Draft" or "Finalize &amp; Save".</div>';
     return;
   }
 
-  listEl.innerHTML = filtered.map((r, i) => `
+  listEl.innerHTML = filtered.map((r, i) => {
+    const isDraft = r.status !== 'final';
+    const badge = isDraft
+      ? '<span class="pill" style="border-radius:6px;background:#fef3c7;color:#92400e">DRAFT</span>'
+      : '<span class="pill" style="border-radius:6px;background:#dcfce7;color:#166534">FINAL</span>';
+    return `
     <div class="inc-card">
       <div class="inc-meta">
-        <span class="inc-name">${r.emp}</span>
-        <span class="inc-date">${r.date}</span>
-        <span class="pill p3" style="border-radius:6px">${r.type}</span>
+        <span class="inc-name">${r.employee || ''}</span>
+        <span class="inc-date">${r.reviewDate || ''}</span>
+        <span class="pill p3" style="border-radius:6px">${r.reviewType || ''}</span>
+        ${badge}
         ${r.reviewer ? `<span style="font-size:12px;color:#888">By ${r.reviewer}</span>` : ''}
       </div>
-      <button class="secondary-btn" style="margin-top:8px;font-size:12px;padding:4px 12px" onclick="toggleReviewText(${i})">View review</button>
-      <div id="rev-text-${i}" style="display:none;margin-top:10px;font-size:13px;line-height:1.8;white-space:pre-wrap;border-top:1px solid #eee;padding-top:10px">${r.text}</div>
-    </div>`).join('');
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="secondary-btn" style="font-size:12px;padding:4px 12px" onclick="loadReviewForEdit('${r.id}')">Edit</button>
+        <button class="secondary-btn" style="font-size:12px;padding:4px 12px" onclick="toggleReviewText(${i})">View review</button>
+      </div>
+      <div id="rev-text-${i}" style="display:none;margin-top:10px;font-size:13px;line-height:1.8;white-space:pre-wrap;border-top:1px solid #eee;padding-top:10px">${r.reviewText || ''}</div>
+    </div>`;
+  }).join('');
+}
+
+// Load a saved review (draft or final) back into the editor for further edits.
+function loadReviewForEdit(id) {
+  const record = allReviews.find(r => r.id === id);
+  if (!record) { alert('Could not find that review to edit.'); return; }
+
+  lastReviewText  = record.reviewText || '';
+  lastReviewEmp   = record.employee || '';
+  lastReviewType  = record.reviewType || '';
+  lastReviewDate  = record.reviewDate || '';
+  currentReviewId = record.id;
+  reviewEditMode  = false;
+
+  // Populate the form fields.
+  if (lastReviewType) document.getElementById('rev-type').value = lastReviewType;
+  if (lastReviewDate) document.getElementById('rev-date').value = lastReviewDate;
+  document.getElementById('reviewer').value = record.reviewer || '';
+
+  // Employee selector: try the dropdown, fall back to the custom-name path.
+  const empSel = document.getElementById('emp-sel');
+  empSel.value = lastReviewEmp;
+  if (empSel.value !== lastReviewEmp) {
+    empSel.value = '__custom';
+    onEmpChange();
+    document.getElementById('custom-name').value = lastReviewEmp;
+  } else {
+    onEmpChange();
+  }
+
+  // Render and reveal the output card.
+  document.getElementById('review-text').innerHTML = formatReviewText(lastReviewText);
+  const editBtn = document.querySelector('.output-toolbar .copy-btn');
+  if (editBtn) editBtn.textContent = 'Edit Text';
+  const outputBox = document.getElementById('review-output');
+  outputBox.style.display = 'block';
+
+  // Switch to the review tab (first .tab button is a valid btn for switchTab).
+  switchTab('review', document.querySelector('.tab'));
+  outputBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function toggleReviewText(i) {

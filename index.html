@@ -155,8 +155,10 @@
           <div class="output-toolbar">
             <p class="sec-title" style="margin:0">Generated Review</p>
             <div style="display:flex;gap:8px">
+              <button class="copy-btn" onclick="toggleEditReview()">Edit Text</button>
               <button class="copy-btn" onclick="downloadWordDoc()">Download Word Doc</button>
-              <button class="copy-btn" onclick="saveReview()" style="background:#1a1a1a;color:#fff;border-color:#1a1a1a">Save to Drive &amp; Records</button>
+              <button class="copy-btn" onclick="saveDraft()">Save Draft</button>
+              <button class="copy-btn" onclick="saveReview()" style="background:#1a1a1a;color:#fff;border-color:#1a1a1a">Finalize &amp; Save</button>
             </div>
           </div>
           <div id="review-text" class="review-output-text"></div>
