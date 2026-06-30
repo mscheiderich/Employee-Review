@@ -1,9 +1,13 @@
 const { kv } = require('@vercel/kv');
+const { requireAdmin } = require('../lib/require-admin');
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  const adminEmail = await requireAdmin(req, res);
+  if (!adminEmail) return; // response already sent
 
   const index = await kv.get('incident-index');
   if (!index || index.length === 0) {

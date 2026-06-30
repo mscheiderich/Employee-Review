@@ -168,7 +168,6 @@ async function initApp() {
   await loadDocxLibrary();
   document.getElementById('header-user').textContent = currentUser;
   document.getElementById('reviewer').value          = currentUser;
-  document.getElementById('inc-logger').value        = currentUser;
   await loadDriveFolderSetting();
   if (currentUserRole === 'admin') { loadUsersList(); loadEmployeesList(); }
 }
@@ -1182,7 +1181,6 @@ async function addIncident() {
   const type   = document.getElementById('inc-type').value;
   const desc   = document.getElementById('inc-desc').value.trim();
   const action = document.getElementById('inc-action').value.trim();
-  const logger = document.getElementById('inc-logger').value.trim();
 
   if (!emp)  { alert('Please select an employee.'); return; }
   if (!desc) { alert('Please describe what happened.'); return; }
@@ -1192,33 +1190,37 @@ async function addIncident() {
   successMsg.style.display = 'none';
   errorMsg.style.display   = 'none';
 
-  try {
-    const res = await fetch('/api/save-incident', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        employee: emp,
-        date: date,
-        type: type,
-        description: desc,
-        actionTaken: action,
-        loggedBy: logger,
-      }),
-    });
-    if (!res.ok) throw new Error('Save failed: ' + res.status);
+  getGoogleToken(async () => {
+    try {
+      const res = await fetch('/api/save-incident', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + googleToken,
+        },
+        body: JSON.stringify({
+          employee: emp,
+          date: date,
+          type: type,
+          description: desc,
+          actionTaken: action,
+        }),
+      });
+      if (!res.ok) throw new Error('Save failed: ' + res.status);
 
-    document.getElementById('inc-emp').value    = '';
-    document.getElementById('inc-desc').value   = '';
-    document.getElementById('inc-action').value = '';
-    setDefaultDates();
+      document.getElementById('inc-emp').value    = '';
+      document.getElementById('inc-desc').value   = '';
+      document.getElementById('inc-action').value = '';
+      setDefaultDates();
 
-    successMsg.style.display = 'block';
-    setTimeout(() => { successMsg.style.display = 'none'; }, 3000);
-    loadIncidents();
-  } catch (err) {
-    errorMsg.textContent   = 'Error saving: ' + err.message;
-    errorMsg.style.display = 'block';
-  }
+      successMsg.style.display = 'block';
+      setTimeout(() => { successMsg.style.display = 'none'; }, 3000);
+      loadIncidents();
+    } catch (err) {
+      errorMsg.textContent   = 'Error saving: ' + err.message;
+      errorMsg.style.display = 'block';
+    }
+  });
 }
 
 async function loadIncidents() {
@@ -1227,21 +1229,28 @@ async function loadIncidents() {
   loadingEl.style.display = 'block';
   listEl.innerHTML = '';
 
-  try {
-    const res  = await fetch('/api/get-incidents');
-    const data = await res.json();
-    allIncidents = (data.incidents || []).map(i => ({
-      emp:    i.employee    || '',
-      date:   i.date        || '',
-      type:   i.type        || '',
-      desc:   i.description || '',
-      action: i.actionTaken || '',
-      logger: i.loggedBy    || '',
-    }));
-  } catch { allIncidents = []; }
+  getGoogleToken(async () => {
+    try {
+      const res  = await fetch('/api/get-incidents', {
+        headers: { 'Authorization': 'Bearer ' + googleToken },
+      });
+      const data = await res.json();
+      allIncidents = (data.incidents || []).map(i => ({
+        id:        i.id          || '',
+        createdAt: i.createdAt   || '',
+        emp:       i.employee    || '',
+        date:      i.date        || '',
+        type:      i.type        || '',
+        desc:      i.description || '',
+        action:    i.actionTaken || '',
+        logger:    i.loggedBy    || '',
+        entries:   i.entries     || [],
+      }));
+    } catch { allIncidents = []; }
 
-  loadingEl.style.display = 'none';
-  renderIncidents();
+    loadingEl.style.display = 'none';
+    renderIncidents();
+  });
 }
 
 function filterInc(filter, btn) {
@@ -1264,17 +1273,75 @@ function renderIncidents() {
 
   const typeCls = { 'Compliance':'badge-compliance', 'Performance':'badge-performance', 'Behavior':'badge-behavior', 'Other':'badge-other' };
 
-  listEl.innerHTML = filtered.map(i => `
+  listEl.innerHTML = filtered.map(i => {
+    // Colon-safe DOM suffix: the full id ("incident:123") is unsafe in a CSS
+    // selector, so derive a bare-number suffix for element ids/markup only.
+    // The FULL id is still passed to addIncidentNote() / the API.
+    const domId = String(i.id).split(':')[1] || i.id;
+    const created = i.createdAt || i.date;
+
+    // Append-only follow-ups, oldest -> newest (server appends in order).
+    const entriesHtml = (i.entries || []).map(e => `
+      <div class="inc-followup">
+        <div style="font-size:12px;color:#888">${formatIncidentTime(e.addedAt)}${e.addedBy ? ' &middot; ' + e.addedBy : ''}</div>
+        <div>${e.text || ''}</div>
+      </div>`).join('');
+
+    // Only offer the update affordance for records that have a real id to
+    // append to (old records predate ids and cannot be appended to).
+    const updateHtml = i.id ? `
+      <button class="secondary-btn" style="margin-top:10px" onclick="document.getElementById('note-wrap-${domId}').style.display='block'; this.style.display='none'">Add Update</button>
+      <div id="note-wrap-${domId}" style="display:none;margin-top:10px">
+        <textarea id="note-input-${domId}" rows="2" placeholder="Add a follow-up update..."></textarea>
+        <button class="secondary-btn" style="margin-top:8px" onclick="addIncidentNote('${i.id}')">Save Update</button>
+      </div>` : '';
+
+    return `
     <div class="inc-card">
       <div class="inc-meta">
         <span class="inc-name">${i.emp}</span>
-        <span class="inc-date">${i.date}</span>
+        <span class="inc-date">${created}</span>
         <span class="pill ${typeCls[i.type] || 'badge-other'}" style="border-radius:6px">${i.type}</span>
         ${i.logger ? `<span style="font-size:12px;color:#888">Logged by ${i.logger}</span>` : ''}
       </div>
       <p class="inc-text">${i.desc}</p>
       ${i.action ? `<p class="inc-followup">Follow-up: ${i.action}</p>` : ''}
-    </div>`).join('');
+      ${entriesHtml}
+      ${updateHtml}
+    </div>`;
+  }).join('');
+}
+
+function formatIncidentTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return isNaN(d) ? iso : d.toLocaleString();
+}
+
+async function addIncidentNote(id) {
+  const domId = String(id).split(':')[1] || id;
+  const ta = document.getElementById('note-input-' + domId);
+  const note = ta ? ta.value.trim() : '';
+  if (!note) { alert('Please enter an update before saving.'); return; }
+
+  getGoogleToken(async () => {
+    try {
+      const res = await fetch('/api/add-incident-note', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + googleToken,
+        },
+        body: JSON.stringify({ id: id, note: note }),
+      });
+      if (!res.ok) throw new Error('Save failed: ' + res.status);
+
+      if (ta) ta.value = '';
+      loadIncidents();
+    } catch (err) {
+      alert('Error saving update: ' + err.message);
+    }
+  });
 }
 
 // ============================================================
