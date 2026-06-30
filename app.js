@@ -1291,6 +1291,7 @@ function renderIncidents() {
     // append to (old records predate ids and cannot be appended to).
     const updateHtml = i.id ? `
       <button class="secondary-btn" style="margin-top:10px" onclick="document.getElementById('note-wrap-${domId}').style.display='block'; this.style.display='none'">Add Update</button>
+      <button class="secondary-btn" style="margin-top:10px" onclick="downloadIncidentPdf('${i.id}')">Export PDF</button>
       <div id="note-wrap-${domId}" style="display:none;margin-top:10px">
         <textarea id="note-input-${domId}" rows="2" placeholder="Add a follow-up update..."></textarea>
         <button class="secondary-btn" style="margin-top:8px" onclick="addIncidentNote('${i.id}')">Save Update</button>
@@ -1342,6 +1343,71 @@ async function addIncidentNote(id) {
       alert('Error saving update: ' + err.message);
     }
   });
+}
+
+function downloadIncidentPdf(id) {
+  // Open the window synchronously, as the FIRST thing, while we still have the
+  // user-gesture context — any await/lookup before this risks the pop-up blocker.
+  const win = window.open('', '_blank');
+  if (!win) { alert('Please allow pop-ups for this site to export the PDF.'); return; }
+
+  // Look up by id (NOT array index — the rendered list may be filtered).
+  const inc = allIncidents.find(x => x.id === id);
+  if (!inc) { win.close(); alert('Incident not found.'); return; }
+
+  const actionHtml = inc.action ? `
+    <h2>Initial Action Taken</h2>
+    <div class="body-text">${escapeHtml(inc.action)}</div>` : '';
+
+  const entriesHtml = (inc.entries && inc.entries.length) ? `
+    <h2>Follow-up Updates</h2>
+    ${inc.entries.map(e => `
+      <div class="followup">
+        <div class="followup-meta">${escapeHtml(formatIncidentTime(e.addedAt))} &middot; ${escapeHtml(e.addedBy || '')}</div>
+        <div class="body-text">${escapeHtml(e.text || '')}</div>
+      </div>`).join('')}` : '';
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Incident Report - ${escapeHtml(inc.emp)} - ${escapeHtml(inc.date)}</title>
+  <style>
+    @page { margin: 0.75in; }
+    body { font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+           color: #1b1b24; line-height: 1.45; max-width: 720px; margin: 0 auto; padding: 24px; }
+    h1 { text-align: center; font-size: 22px; margin: 0 0 4px; }
+    .subhead { text-align: center; font-size: 14px; font-weight: bold; margin: 0 0 24px; }
+    h2 { font-size: 15px; margin: 24px 0 6px; border-bottom: 1px solid #ccc; padding-bottom: 3px; }
+    .label-block { margin-bottom: 8px; }
+    .label-row { margin: 2px 0; }
+    .label { font-weight: bold; display: inline-block; min-width: 140px; }
+    .body-text { white-space: pre-wrap; }
+    .followup { border-left: 3px solid #999; padding-left: 12px; margin: 12px 0; }
+    .followup-meta { font-size: 12px; color: #555; margin-bottom: 4px; }
+  </style>
+</head>
+<body onload="window.focus();window.print();">
+  <h1>INCIDENT REPORT</h1>
+  <div class="subhead">Scheiderich Insurance Agency - Allstate</div>
+
+  <div class="label-block">
+    <div class="label-row"><span class="label">Employee:</span> ${escapeHtml(inc.emp)}</div>
+    <div class="label-row"><span class="label">Issue Type:</span> ${escapeHtml(inc.type)}</div>
+    <div class="label-row"><span class="label">Date of Incident:</span> ${escapeHtml(inc.date)}</div>
+    <div class="label-row"><span class="label">Logged:</span> ${escapeHtml(formatIncidentTime(inc.createdAt))}</div>
+    <div class="label-row"><span class="label">Logged by:</span> ${escapeHtml(inc.logger)}</div>
+  </div>
+
+  <h2>Incident Description</h2>
+  <div class="body-text">${escapeHtml(inc.desc)}</div>
+  ${actionHtml}
+  ${entriesHtml}
+</body>
+</html>`;
+
+  win.document.write(html);
+  win.document.close();
 }
 
 // ============================================================
