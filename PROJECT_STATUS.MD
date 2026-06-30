@@ -61,7 +61,17 @@ Workflow: edit in Claude Code → commit + Sync in VS Code → Vercel auto-deplo
 - api/save-review.js — DEAD CODE. Superseded by reviews-finalize.js (it still
   writes a Sheets row + uses the old flow). Flagged for removal in a future
   cleanup; left in place for now.
-- api/save-incident.js / api/get-incidents.js — incidents in Vercel KV
+- Incidents are an APPEND-ONLY log in Vercel KV. Keys `incident:{timestamp}`
+  + an `incident-index` array. Each record carries a stable `id` (= its key)
+  and `createdAt`. The original entry (employee/date/type/description/
+  actionTaken) is IMMUTABLE once created; follow-ups are appended to an
+  `entries[]` array, each `{ text, addedBy, addedAt }` with addedBy/loggedBy
+  server-stamped from the verified admin email. NO edit or delete path by
+  design (HR chain-of-custody requirement).
+- api/save-incident.js / api/get-incidents.js — create + list incidents.
+  Now ADMIN-GATED via lib/require-admin.js (previously open).
+- api/add-incident-note.js — append-only follow-up note (POST). Admin-gated.
+  Never modifies existing fields or existing entries.
 - api/save-settings.js / api/get-settings.js — employee list + settings in KV
 - api/users.js — user + employee-account management (uses @vercel/kv with
   an asArray() normalizer that tolerates legacy data shapes)
@@ -104,35 +114,55 @@ NOTE: env-var changes require a manual Redeploy in Vercel to take effect.
 
 ## Completed Features
 - AI review generation
-- KV-backed review records with a draft/final lifecycle: save drafts, edit
-  text inline, re-load saved reviews, then finalize. Finalize creates the
-  Google Doc once and updates that SAME Doc in place on re-finalize, so the
-  employee link is stable. Admin-gated via ADMIN_EMAILS. (Google Sheets
-  retired from the pipeline; save-review.js is now dead code.)
+- KV-backed reviews (SOURCE OF TRUTH): records keyed `review:{timestamp}`
+  with a `reviews:index` array; each record's `status` is 'draft' or 'final'.
+  Fields use reviewType/reviewDate (NOT type/date) consistently across save,
+  finalize, list, and the portal read. Lifecycle: Save Draft (KV only, no
+  Google Doc, invisible to employees) → Finalize (creates the Google Doc) →
+  Edit a finalized review (updates the SAME Doc in place so the employee link
+  never changes). Drafts are shared among admins — either admin can pick up
+  and finish the other's draft. Routes (all admin-gated): reviews-save.js
+  (draft upsert), reviews-finalize.js (create-or-update-Doc-in-place + flip
+  to final), reviews-list.js (admin history); reviews.js (employee portal
+  read) reads FINALIZED records from KV, not Google Sheets gviz. Google
+  Sheets fully retired from the review pipeline; save-review.js is dead code.
 - Word doc local download
 - Employee portal with "View Review" links; incidents fully hidden
 - Individual logins (managers via Google, employees via password)
 - Admin panel: user management, employee accounts, Drive folder setting
-- Incident log via Vercel KV
+- Append-only incident log in Vercel KV: immutable original entry + appended
+  `entries[]` follow-ups, addedBy server-stamped from the verified admin
+  email, no edit/delete path by design (HR chain-of-custody). All incident
+  endpoints admin-gated. Per-incident PDF export via downloadIncidentPdf — a
+  frontend-only print view → browser "Save as PDF" (no backend, no Drive
+  write); PDF chosen over Word deliberately so exported HR records aren't
+  trivially editable.
 - All storage cloud-based (migrated off localStorage)
 - Custom domain live via Cloudflare
 - Model name, Google creds, and Shared Drive ID all in env vars
 - users.js standardized on @vercel/kv (fixed 500 errors)
 
 ## KNOWN SECURITY GAPS — fix in next phase (deliberate rebuild)
+RESOLVED: incident endpoints (save-incident / get-incidents / add-incident-
+note) are no longer open — all admin-gated via lib/require-admin.js.
+
+STILL OPEN (defer to the auth phase):
 1. Employee portal passwords stored as PLAINTEXT in Vercel KV. Must be hashed.
 2. No admin-permission gate on /api/users — anyone who reaches the endpoint
    can add/remove users or reset passwords. Add a caller-role check.
 3. api/reviews.js (employee portal read) has NO employee auth — anyone who
    passes ?name=<employee> gets that employee's finalized reviews. The portal
-   relies on session state only; the endpoint itself is open. Defer the fix to
-   the auth phase (per-employee identity / token check).
+   relies on session state only; the endpoint itself is open. Needs a per-
+   employee identity / token check.
 These are the "structure users properly" phase. Do them carefully as a
 designed rebuild, NOT a quick patch.
 
 ## Minor Cleanup (low priority)
 - api/save-review.js is dead code (superseded by reviews-finalize.js). Remove
   in a future cleanup once the new flow is confirmed stable in production.
+- @vercel/kv is deprecated; migrate to @upstash/redis (one-line client swap
+  reusing existing KV_REST_API_URL / KV_REST_API_TOKEN). Deferred — not
+  urgent; do as its own isolated change.
 - app.js still contains the now-unused client-side getOrCreateFolder()
   function and the OLD Shared Drive ID 0ALICr0fW_IE7Uk9PVA (dead code,
   harmless). Remove when convenient.
